@@ -10,9 +10,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-bm25 = ["rank_bm25>=0.2.2"]
 tokens = ["tiktoken>=0.7.0"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "reportlab>=4.0"]
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -7,7 +7,7 @@
 ## セットアップ
 
 ```bash
-pip install -e ".[bm25,tokens,dev]"
+pip install -e ".[tokens,dev]"
 ```
 
 ## 使い方

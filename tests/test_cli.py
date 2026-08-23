@@ -1,0 +1,33 @@
+import json
+
+from pdfq import cli
+
+
+def test_index_then_search_with_relative_root(tmp_path, sample_pdf, monkeypatch, capsys):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["index", "--root", "docs"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["indexed"] == 1
+    assert out["chunks"] > 0
+
+    rc = cli.main(["search", "--q", "大阪", "--top-k", "3", "--max-tokens", "800"])
+    assert rc == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines
+    hit = json.loads(lines[0])
+    assert hit["pages"] == [2, 2]
+
+
+def test_index_default_root_is_cwd(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["index"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["indexed"] == 1
