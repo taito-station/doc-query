@@ -35,7 +35,58 @@ CREATE TABLE IF NOT EXISTS chunks (
   part_total  INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
+CREATE TABLE IF NOT EXISTS meta (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL
+);
 """
+
+BASE_DIR_KEY = "base_dir"
+
+
+class BaseDirMismatch(Exception):
+    """The store was written against a different base directory.
+
+    Path keys are relative to the directory indexing ran from, and that
+    directory is not recoverable from the keys themselves. Opening the same
+    ``--db`` from somewhere else would reinterpret every key against the new
+    base: the same file gets indexed twice under two keys, and prune reads
+    live entries as gone. Refuse instead of guessing.
+    """
+
+
+def get_meta(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
+
+
+def bind_base_dir(conn: sqlite3.Connection, base_dir: Path) -> None:
+    """Claim `base_dir` as this store's key basis, or raise if already bound.
+
+    Called by the indexer before writing. Read paths (`search` / `get` /
+    `list`) do not bind: they only echo keys back, so a mismatch there is
+    cosmetic, and refusing would make an index unreadable from anywhere but
+    the directory that built it.
+    """
+    recorded = get_meta(conn, BASE_DIR_KEY)
+    current = str(base_dir.resolve())
+    if recorded is None:
+        set_meta(conn, BASE_DIR_KEY, current)
+        conn.commit()
+        return
+    if recorded != current:
+        raise BaseDirMismatch(
+            f"index was built from {recorded!r}, but this run is in "
+            f"{current!r}. Re-run from there, or use a separate --db."
+        )
 
 
 def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:

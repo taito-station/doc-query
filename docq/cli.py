@@ -25,7 +25,12 @@ def cmd_index(args: argparse.Namespace) -> int:
     # caller; `resolve` so an absolute root outside the working directory is
     # compared against `repo_root` on equal terms (see indexer.rel_path).
     roots = [Path(r).expanduser().resolve() for r in (args.root or ["."])]
-    stats = _indexer.index_paths(conn, repo_root, roots, prune=not args.no_prune)
+    try:
+        stats = _indexer.index_paths(conn, repo_root, roots,
+                                      prune=not args.no_prune)
+    except _store.BaseDirMismatch as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
+        return 1
     print(json.dumps({
         "scanned": stats.scanned,
         "indexed": stats.indexed,

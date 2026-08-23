@@ -56,6 +56,26 @@ def test_index_with_absolute_root_outside_cwd(tmp_path, sample_pdf, monkeypatch,
     assert json.loads(lines[0])["path"] == "../outside/sample.pdf"
 
 
+def test_index_no_prune_keeps_removed_entries(tmp_path, sample_pdf, monkeypatch,
+                                               capsys):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    pdf = docs / "sample.pdf"
+    pdf.write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["index", "--root", "docs"]) == 0
+    capsys.readouterr()
+
+    pdf.unlink()
+    assert cli.main(["index", "--root", "docs", "--no-prune"]) == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["pruned"] == 0
+
+    assert cli.main(["stats"]) == 0
+    assert json.loads(capsys.readouterr().out.strip())["files"] == 1
+
+
 def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 

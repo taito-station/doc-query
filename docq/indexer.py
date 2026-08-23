@@ -57,8 +57,15 @@ def rel_path(path: Path, repo_root: Path) -> str:
         return path.as_posix()
 
 
-def _is_within(path: Path, root: Path) -> bool:
-    return path == root or root in path.parents
+def _abs_path(rel: str, repo_root: Path) -> Path:
+    """Inverse of :func:`rel_path`, resolving `..` lexically only.
+
+    Deliberately not ``Path.resolve()``: keys are built from paths that
+    ``rglob`` yielded under an already-resolved root, so following symlinks
+    here would produce a path outside that root and make the containment
+    check below disagree with the key that was stored.
+    """
+    return Path(os.path.normpath(repo_root / rel))
 
 
 def _windows(text: str, win: int = FIXED_WINDOW_CHARS,
@@ -119,20 +126,32 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
 def index_paths(conn, repo_root: Path, roots: list[Path], *,
                  prune: bool = True) -> IndexStats:
     """Walk `roots` for *.pdf files (relative to `repo_root`) and index them."""
+    # Normalize here rather than trusting the caller: `rel_path` and the
+    # prune containment check below both depend on this, so the invariant
+    # belongs next to the code that relies on it.
+    repo_root = repo_root.resolve()
+    _store.bind_base_dir(conn, repo_root)
     stats = IndexStats()
     seen: set[str] = set()
     scanned_roots: list[Path] = []
     for root in roots:
-        if not root.exists():
-            # A typo'd root must not look like "scanned, found nothing".
-            stats.errors.append(f"{rel_path(root, repo_root)}: root does not exist")
+        root = root.resolve()
+        if not root.is_dir():
+            # A typo'd or non-directory root must never look like
+            # "scanned, found nothing" — that reading is indistinguishable
+            # from an empty directory and, before prune learned to check
+            # `exists()`, silently deleted the entry it was pointed at.
+            reason = "root does not exist" if not root.exists() \
+                else "root is not a directory"
+            stats.errors.append(f"{root}: {reason}")
             continue
-        # Resolved so the prune containment check below compares like with
-        # like (macOS /tmp is a symlink to /private/tmp).
-        scanned_roots.append(root.resolve())
+        scanned_roots.append(root)
         # Match the suffix case-insensitively: `rglob` is case-sensitive even
-        # on a case-insensitive filesystem, so `*.pdf` silently drops REPORT.PDF.
-        pdfs = (p for p in root.rglob("*") if p.suffix.lower() == PDF_SUFFIX)
+        # on a case-insensitive filesystem, so `*.pdf` silently drops
+        # REPORT.PDF. `is_file` because a *directory* named `archive.pdf`
+        # matches the suffix too, and would fail every scan from then on.
+        pdfs = (p for p in root.rglob("*")
+                if p.is_file() and p.suffix.lower() == PDF_SUFFIX)
         for pdf_path in sorted(pdfs):
             stats.scanned += 1
             rel = rel_path(pdf_path, repo_root)
@@ -149,13 +168,17 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
                 stats.skipped += 1
 
     if prune:
-        # Only entries under a root scanned in *this* run are eligible: an
-        # unseen entry there means the file is gone. Entries indexed from
-        # other roots were never looked at, so their absence from `seen`
-        # says nothing about whether they still exist.
+        # Two conditions, both required. Entries indexed from other roots
+        # were never looked at, so their absence from `seen` says nothing
+        # about whether they still exist. And even under a scanned root,
+        # absence from `seen` is not proof the file is gone: `rglob` skips
+        # unreadable subdirectories without raising. Confirm on disk before
+        # deleting, so every way a scan can come up short fails safe.
         for rel in _store.list_all_paths(conn) - seen:
-            abs_path = (repo_root / rel).resolve()
-            if not any(_is_within(abs_path, root) for root in scanned_roots):
+            abs_path = _abs_path(rel, repo_root)
+            if not any(abs_path.is_relative_to(root) for root in scanned_roots):
+                continue
+            if abs_path.exists():
                 continue
             _store.delete_file(conn, rel)
             stats.pruned += 1
