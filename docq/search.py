@@ -174,6 +174,12 @@ def search(conn, query: str, *, mode: str = "bm25",
     """
     from . import store as _store
 
+    if not query.strip():
+        # Otherwise the empty-token path below falls through to grep, where
+        # `re.escape("")` matches at every offset and every chunk comes back
+        # ranked by length.
+        return []
+
     rows = _store.all_chunks(conn)
     if path_globs:
         rows = [r for r in rows if _path_matches(r["path"], path_globs)]

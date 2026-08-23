@@ -14,7 +14,10 @@ from typing import Iterable
 
 DEFAULT_DB_PATH = Path(".docq") / "index.sqlite"
 
-SCHEMA_VERSION = 1
+# 2: added the `meta` table (records the base directory path keys are
+# relative to). Bumped so a future version check can tell a pre-`meta`
+# index apart from one that simply has not been bound yet.
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -68,25 +71,48 @@ def set_meta(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
-def bind_base_dir(conn: sqlite3.Connection, base_dir: Path) -> None:
-    """Claim `base_dir` as this store's key basis, or raise if already bound.
+def check_base_dir(conn: sqlite3.Connection, base_dir: Path) -> None:
+    """Raise unless `base_dir` may serve as this store's key basis.
 
-    Called by the indexer before writing. Read paths (`search` / `get` /
-    `list`) do not bind: they only echo keys back, so a mismatch there is
-    cosmetic, and refusing would make an index unreadable from anywhere but
-    the directory that built it.
+    Read-only, so callers can fail fast before doing any work. Read paths
+    (`search` / `get` / `list`) do not call this at all: they only echo keys
+    back, so a mismatch there is cosmetic, and refusing would make an index
+    unreadable from anywhere but the directory that built it.
     """
     recorded = get_meta(conn, BASE_DIR_KEY)
     current = str(base_dir.resolve())
-    if recorded is None:
-        set_meta(conn, BASE_DIR_KEY, current)
-        conn.commit()
+    if recorded == current:
         return
-    if recorded != current:
+    if recorded is not None:
         raise BaseDirMismatch(
             f"index was built from {recorded!r}, but this run is in "
-            f"{current!r}. Re-run from there, or use a separate --db."
+            f"{current!r}. Re-run from there, use a separate --db, or "
+            f"delete the index to rebuild it here."
         )
+    if list_all_paths(conn):
+        # Unrecorded *and* already holding entries: those keys were written
+        # against some base we cannot recover, so adopting the current one
+        # would reinterpret every key — exactly the damage this guard exists
+        # to prevent, just once and silently.
+        raise BaseDirMismatch(
+            "index has entries but no recorded base directory (built before "
+            "this check existed). Delete the index and rebuild it."
+        )
+
+
+def bind_base_dir(conn: sqlite3.Connection, base_dir: Path) -> None:
+    """Claim `base_dir` as this store's key basis. Call before writing keys.
+
+    Claiming happens at the point of an actual write, not when a run starts:
+    otherwise `docq index --root typo` from the wrong directory would bind an
+    empty store to a directory it never indexed, and every later run from the
+    right one would be refused.
+
+    No commit here either — the caller's own commit makes the claim atomic
+    with the writes it covers, so a run that fails partway leaves no claim.
+    """
+    check_base_dir(conn, base_dir)
+    set_meta(conn, BASE_DIR_KEY, str(base_dir.resolve()))
 
 
 def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:

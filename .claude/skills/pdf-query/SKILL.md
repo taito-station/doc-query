@@ -72,4 +72,6 @@ python -m docq get --chunk-id <返ってきたID>
   1. ヒットが0件 → 異なるキーワードで1〜2回再試行
   2. それでも0件 → `python -m docq list` で索引済みファイル・ページ一覧を確認
   3. それでも特定できない → ホスト側のPDF読込ツールで生ファイルへフォールバック
+- `index`が`{"error": "index was built from ..."}`で終了コード1を返した場合、その索引は別のディレクトリで作られている。索引中の`path`はそのディレクトリからの相対パスなので、**同じディレクトリで実行し直す**か、別の`--db`を指定する（作り直してよいなら索引ファイルを削除する）。`search`/`get`/`list`はこの制約を受けないので、読むだけならどこからでも実行できる。
+- `index`の`errors`に`cannot verify, kept in the index`が出た場合、そのファイルの存在を確認できていない（親ディレクトリが読めない等）。索引からは消していないので検索は従来どおり効くが、結果が古い可能性がある。
 - 本Skillは`.claude/skills/`配下からClaude Codeに読み込まれる。GitHub Copilot等の別ホストで使う場合は`.github/skills/pdf-query/SKILL.md`に同内容を配置する（CLI本体`docq`はhost非依存で変更不要）。

@@ -61,3 +61,35 @@ def test_get_chunk_roundtrip(tmp_path, sample_pdf):
 def test_get_chunk_missing_returns_none(tmp_path, sample_pdf):
     conn = _indexed_conn(tmp_path, sample_pdf)
     assert search.get_chunk(conn, "does-not-exist") is None
+
+
+def test_empty_query_returns_no_hits(tmp_path, sample_pdf):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    assert search.search(conn, "   ", top_k=5, max_tokens=800) == []
+
+
+def test_idf_stays_positive_for_a_term_in_every_document():
+    """The reason this project ships its own BM25 instead of rank_bm25.
+
+    Textbook Okapi IDF goes negative once a term appears in more than half
+    the corpus and hits exactly 0 at half — with a handful of indexed files
+    that is an ordinary situation, and real matches silently score away to
+    nothing. Guarding the smoothing directly, because a search-level test
+    would still pass while ranking quietly degraded.
+    """
+    corpus = [["東京", "天気"], ["東京", "大阪"], ["東京", "京都"], ["東京", "奈良"]]
+    bm25 = search._MiniBM25(corpus, b=search.LENGTH_NORM_B)
+
+    assert bm25.idf["東京"] > 0  # present in all 4 of 4
+    assert min(bm25.get_scores(["東京"])) > 0
+
+
+def test_search_finds_a_term_present_in_every_chunk(tmp_path, sample_pdf):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    rows = store.all_chunks(conn)
+    everywhere = "天気"
+    assert all(everywhere in r["text"] for r in rows), "fixture precondition"
+
+    hits = search.search(conn, everywhere, top_k=5, max_tokens=800)
+
+    assert hits, "a term in every chunk must still be findable"

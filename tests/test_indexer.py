@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from docq import indexer, store
@@ -192,23 +194,76 @@ def test_index_paths_ignores_directory_named_like_a_pdf(tmp_path, sample_pdf):
     assert stats.indexed == 1
 
 
-def test_index_paths_keeps_entries_whose_files_are_still_on_disk(
-        tmp_path, sample_pdf, monkeypatch):
-    """A scan that comes up short must not be read as "the file is gone"."""
+@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permissions")
+def test_index_paths_keeps_entries_it_cannot_verify(tmp_path, sample_pdf):
+    """An unreadable subdirectory must not be read as "the files are gone".
+
+    Uses a real chmod rather than a stubbed `rglob`: the failure this guards
+    against is that `rglob` skips the directory silently *and* the on-disk
+    check then raises, and only the real thing exercises both halves.
+    """
+    docs = tmp_path / "docs"
+    locked = docs / "locked"
+    locked.mkdir(parents=True)
+    (locked / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_paths(conn, tmp_path, [docs])
+    assert store.stats(conn)["files"] == 1
+
+    locked.chmod(0o000)
+    try:
+        stats = indexer.index_paths(conn, tmp_path, [docs])
+    finally:
+        locked.chmod(0o755)
+
+    assert stats.pruned == 0
+    assert store.get_file_meta(conn, "docs/locked/sample.pdf") is not None
+    # and it says so rather than reporting a clean scan
+    assert len(stats.errors) == 1
+    assert "cannot verify" in stats.errors[0]
+
+
+def test_index_paths_refuses_a_store_written_before_base_dir_was_recorded(
+        tmp_path, sample_pdf):
+    """Entries with no recorded base cannot be safely adopted."""
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "sample.pdf").write_bytes(sample_pdf.read_bytes())
 
     conn = store.open_store(tmp_path / "index.sqlite")
     indexer.index_paths(conn, tmp_path, [docs])
+    # Simulate an index built before the base directory was recorded.
+    conn.execute("DELETE FROM meta")
+    conn.commit()
 
-    # Simulate rglob coming up empty (unreadable subdirectory, races, …)
-    # while the file is still there.
-    monkeypatch.setattr(type(docs), "rglob", lambda self, pattern: iter(()))
-    stats = indexer.index_paths(conn, tmp_path, [docs])
+    with pytest.raises(store.BaseDirMismatch):
+        indexer.index_paths(conn, tmp_path, [docs])
 
-    assert stats.pruned == 0
     assert store.get_file_meta(conn, "docs/sample.pdf") is not None
+
+
+def test_run_that_writes_nothing_does_not_bind_the_base_dir(tmp_path,
+                                                            sample_pdf):
+    """`index --root typo` from the wrong directory must not claim the store.
+
+    Binding up front would lock an empty index to a directory it never
+    indexed, and refuse every later run from the right one.
+    """
+    wrong = tmp_path / "wrong"
+    right = tmp_path / "right"
+    (right / "docs").mkdir(parents=True)
+    wrong.mkdir()
+    (right / "docs" / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, wrong, [wrong / "typo"])
+    assert stats.errors
+    assert store.get_meta(conn, store.BASE_DIR_KEY) is None
+
+    stats = indexer.index_paths(conn, right, [right / "docs"])
+    assert stats.indexed == 1
+    assert store.get_meta(conn, store.BASE_DIR_KEY) == str(right.resolve())
 
 
 def test_index_paths_reports_missing_root(tmp_path):

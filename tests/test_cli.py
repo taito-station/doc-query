@@ -76,6 +76,41 @@ def test_index_no_prune_keeps_removed_entries(tmp_path, sample_pdf, monkeypatch,
     assert json.loads(capsys.readouterr().out.strip())["files"] == 1
 
 
+def test_index_from_another_directory_is_refused_but_search_is_not(
+        tmp_path, sample_pdf, monkeypatch, capsys):
+    """The write/read asymmetry, at the CLI layer.
+
+    Writing from a second directory would reinterpret every key, so it is
+    refused with a JSON error and rc=1. Reading only echoes keys back, so it
+    must keep working — otherwise an index is usable only from the directory
+    that built it.
+    """
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    (a / "docs").mkdir(parents=True)
+    (b / "docs").mkdir(parents=True)
+    (a / "docs" / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    db = str(tmp_path / "shared.sqlite")
+
+    monkeypatch.chdir(a)
+    assert cli.main(["--db", db, "index", "--root", "docs"]) == 0
+    capsys.readouterr()
+
+    monkeypatch.chdir(b)
+    assert cli.main(["--db", db, "index", "--root", "docs"]) == 1
+    out = json.loads(capsys.readouterr().out.strip())
+    assert "error" in out
+
+    # the entries written from `a` are untouched, and readable from `b`
+    assert cli.main(["--db", db, "stats"]) == 0
+    assert json.loads(capsys.readouterr().out.strip())["files"] == 1
+
+    assert cli.main(["--db", db, "search", "--q", "大阪", "--top-k", "1"]) == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines
+    assert json.loads(lines[0])["path"] == "docs/sample.pdf"
+
+
 def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 

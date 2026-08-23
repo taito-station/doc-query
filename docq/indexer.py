@@ -68,6 +68,24 @@ def _abs_path(rel: str, repo_root: Path) -> Path:
     return Path(os.path.normpath(repo_root / rel))
 
 
+def _is_gone(path: Path) -> bool | None:
+    """True if `path` is definitely absent, False if present, None if unknown.
+
+    Neither ``Path.exists`` nor ``os.path.exists`` can express the third
+    answer, and both are wrong here. ``Path.exists`` lets ``PermissionError``
+    through (an unreadable parent crashes the scan); ``os.path.exists``
+    swallows it and reports False, which reads as "deleted" and prunes a file
+    that is still there. Prune only on a definite answer.
+    """
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except OSError:
+        return None
+    return False
+
+
 def _windows(text: str, win: int = FIXED_WINDOW_CHARS,
              overlap: int = FIXED_WINDOW_OVERLAP) -> list[str]:
     step = max(1, win - overlap)
@@ -88,7 +106,15 @@ def _chunk_id(path: str, page: int, part_index: int) -> str:
 
 
 def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
-    """Index a single PDF; returns the number of chunks written (0 if skipped)."""
+    """Index a single PDF; returns the number of chunks written (0 if skipped).
+
+    Normalizes and claims `repo_root` itself rather than trusting the caller:
+    this is a public entry point that writes keys, so the invariant "every
+    key in a store shares one base directory" has to hold here too, not only
+    in :func:`index_paths`.
+    """
+    repo_root = repo_root.resolve()
+    _store.bind_base_dir(conn, repo_root)
     rel = rel_path(pdf_path, repo_root)
     stat = pdf_path.stat()
     sha1 = _sha1_of_file(pdf_path)
@@ -130,7 +156,9 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
     # prune containment check below both depend on this, so the invariant
     # belongs next to the code that relies on it.
     repo_root = repo_root.resolve()
-    _store.bind_base_dir(conn, repo_root)
+    # Fail fast before scanning; the claim itself is made per write, in
+    # `index_one_file`, so a run that writes nothing never binds the store.
+    _store.check_base_dir(conn, repo_root)
     stats = IndexStats()
     seen: set[str] = set()
     scanned_roots: list[Path] = []
@@ -150,8 +178,10 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
         # on a case-insensitive filesystem, so `*.pdf` silently drops
         # REPORT.PDF. `is_file` because a *directory* named `archive.pdf`
         # matches the suffix too, and would fail every scan from then on.
+        # Suffix first: `is_file` stats every entry, and only PDF candidates
+        # are worth that syscall.
         pdfs = (p for p in root.rglob("*")
-                if p.is_file() and p.suffix.lower() == PDF_SUFFIX)
+                if p.suffix.lower() == PDF_SUFFIX and p.is_file())
         for pdf_path in sorted(pdfs):
             stats.scanned += 1
             rel = rel_path(pdf_path, repo_root)
@@ -178,7 +208,14 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             abs_path = _abs_path(rel, repo_root)
             if not any(abs_path.is_relative_to(root) for root in scanned_roots):
                 continue
-            if abs_path.exists():
+            gone = _is_gone(abs_path)
+            if gone is None:
+                # Can't tell (unreadable parent, I/O error). Keep the entry
+                # and say so: staying silent would read as a clean scan while
+                # the index quietly goes stale.
+                stats.errors.append(f"{rel}: cannot verify, kept in the index")
+                continue
+            if not gone:
                 continue
             _store.delete_file(conn, rel)
             stats.pruned += 1
