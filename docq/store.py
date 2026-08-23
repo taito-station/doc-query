@@ -122,7 +122,12 @@ def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)
-    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    # Stamp the version only on a store that has none. Overwriting it every
+    # time would erase the very evidence the number exists to carry: an old
+    # store would be relabelled current the first time it was opened, and a
+    # later migration check would have nothing left to look at.
+    if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     return conn
 

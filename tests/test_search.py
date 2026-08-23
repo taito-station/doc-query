@@ -64,7 +64,16 @@ def test_get_chunk_missing_returns_none(tmp_path, sample_pdf):
 
 
 def test_empty_query_returns_no_hits(tmp_path, sample_pdf):
+    """The empty string is the case that matters.
+
+    `re.escape("")` matches at every offset, so without the guard the grep
+    fallback returns every chunk ranked by length. A whitespace-only query
+    happens to return nothing either way on this fixture, so it cannot stand
+    in for this.
+    """
     conn = _indexed_conn(tmp_path, sample_pdf)
+    assert search.search(conn, "", top_k=5, max_tokens=800) == []
+    assert search.search(conn, "", top_k=5, max_tokens=800, mode="grep") == []
     assert search.search(conn, "   ", top_k=5, max_tokens=800) == []
 
 

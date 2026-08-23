@@ -38,7 +38,11 @@ def cmd_index(args: argparse.Namespace) -> int:
         "pruned": stats.pruned,
         "chunks": stats.chunks,
         "errors": stats.errors,
+        "warnings": stats.warnings,
     }, ensure_ascii=False))
+    # Warnings deliberately do not fail the run: an unreadable directory
+    # persists until someone fixes the permissions, and a run that always
+    # exits non-zero stops being a signal.
     return 1 if stats.errors else 0
 
 

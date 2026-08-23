@@ -1,8 +1,16 @@
 import os
+import sys
 
 import pytest
 
 from docq import indexer, store
+
+# `os.geteuid` is POSIX-only, so this must not be evaluated bare at import
+# time — on Windows it would fail collection for the whole module.
+posix_permissions_only = pytest.mark.skipif(
+    sys.platform == "win32" or getattr(os, "geteuid", lambda: 1)() == 0,
+    reason="needs POSIX permissions and a non-root user",
+)
 
 
 def test_windows_splits_long_text_with_overlap():
@@ -194,7 +202,7 @@ def test_index_paths_ignores_directory_named_like_a_pdf(tmp_path, sample_pdf):
     assert stats.indexed == 1
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permissions")
+@posix_permissions_only
 def test_index_paths_keeps_entries_it_cannot_verify(tmp_path, sample_pdf):
     """An unreadable subdirectory must not be read as "the files are gone".
 
@@ -219,9 +227,96 @@ def test_index_paths_keeps_entries_it_cannot_verify(tmp_path, sample_pdf):
 
     assert stats.pruned == 0
     assert store.get_file_meta(conn, "docs/locked/sample.pdf") is not None
-    # and it says so rather than reporting a clean scan
-    assert len(stats.errors) == 1
-    assert "cannot verify" in stats.errors[0]
+    # Reported, but as a warning: the condition persists until someone fixes
+    # the permissions, so failing the run every time would train the caller
+    # to ignore the exit code.
+    assert stats.errors == []
+    assert any("docs/locked/sample.pdf: cannot verify" in w
+               for w in stats.warnings)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="needs POSIX symlinks")
+def test_index_paths_prunes_a_symlink_whose_target_is_gone(tmp_path, sample_pdf):
+    """A link to a deleted file is gone, not present.
+
+    `os.lstat` would call the dangling link present and leave the entry —
+    and the scan drops it too, so nothing would ever remove it and searches
+    would keep returning text for a file that no longer exists.
+    """
+    docs = tmp_path / "docs"
+    target = tmp_path / "target"
+    docs.mkdir()
+    target.mkdir()
+    real = target / "real.pdf"
+    real.write_bytes(sample_pdf.read_bytes())
+    (docs / "link.pdf").symlink_to(real)
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_paths(conn, tmp_path, [docs])
+    assert store.get_file_meta(conn, "docs/link.pdf") is not None
+
+    real.unlink()
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+
+    assert stats.pruned == 1
+    assert store.get_file_meta(conn, "docs/link.pdf") is None
+
+
+def test_index_paths_warns_when_a_whole_root_is_pruned(tmp_path, sample_pdf):
+    """Emptying a root out entirely still prunes, but says so.
+
+    Nothing on disk separates "every file was deleted" from "the mount went
+    away", so refusing to prune would break the case prune exists for. The
+    warning is what makes the second case visible.
+    """
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_paths(conn, tmp_path, [docs])
+
+    (docs / "sample.pdf").rename(tmp_path / "moved.pdf")
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+
+    assert stats.pruned == 1
+    assert store.get_file_meta(conn, "docs/sample.pdf") is None
+    assert len(stats.warnings) == 1
+    assert "candidates for removal" in stats.warnings[0]
+
+
+def test_index_one_file_refuses_a_store_bound_elsewhere(tmp_path, sample_pdf):
+    """The refusal side of the public single-file entry point."""
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    pdf = a / "sample.pdf"
+    pdf.write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_one_file(conn, a, pdf)
+
+    with pytest.raises(store.BaseDirMismatch):
+        indexer.index_one_file(conn, b, pdf)
+
+
+def test_index_paths_does_not_bind_when_every_pdf_fails(tmp_path, monkeypatch):
+    """Binding must follow a real write, not the start of a run.
+
+    Otherwise one run against unreadable PDFs from the wrong directory locks
+    an empty index to it, and every later run from the right one is refused.
+    """
+    wrong = tmp_path / "wrong"
+    docs = wrong / "docs"
+    docs.mkdir(parents=True)
+    (docs / "broken.pdf").write_bytes(b"not a pdf")
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, wrong, [docs])
+
+    assert stats.errors, "the broken PDF should be reported"
+    assert store.get_meta(conn, store.BASE_DIR_KEY) is None
 
 
 def test_index_paths_refuses_a_store_written_before_base_dir_was_recorded(
