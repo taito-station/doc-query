@@ -8,6 +8,7 @@ BM25 ranking is computed at query time over the chunks loaded from this store
 """
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from pathlib import Path
 from typing import Iterable
@@ -56,6 +57,23 @@ class BaseDirMismatch(Exception):
     base: the same file gets indexed twice under two keys, and prune reads
     live entries as gone. Refuse instead of guessing.
     """
+
+
+@contextlib.contextmanager
+def savepoint(conn: sqlite3.Connection, name: str):
+    """Roll back just this block on failure, leaving the transaction open.
+
+    `with conn:` would commit the whole connection, which belongs to the
+    caller. A savepoint scopes the undo to one unit of work instead.
+    """
+    conn.execute(f"SAVEPOINT {name}")
+    try:
+        yield
+    except BaseException:
+        conn.execute(f"ROLLBACK TO {name}")
+        conn.execute(f"RELEASE {name}")
+        raise
+    conn.execute(f"RELEASE {name}")
 
 
 def get_meta(conn: sqlite3.Connection, key: str) -> str | None:

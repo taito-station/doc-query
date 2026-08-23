@@ -1,4 +1,8 @@
 import json
+import os
+import sys
+
+import pytest
 
 from docq import cli
 
@@ -109,6 +113,40 @@ def test_index_from_another_directory_is_refused_but_search_is_not(
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines
     assert json.loads(lines[0])["path"] == "docs/sample.pdf"
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32" or getattr(os, "geteuid", lambda: 1)() == 0,
+    reason="needs POSIX permissions and a non-root user",
+)
+def test_warnings_are_reported_without_failing_the_run(tmp_path, sample_pdf,
+                                                        monkeypatch, capsys):
+    """The exit-code contract, at the CLI layer.
+
+    An unreadable directory does not resolve on its own, so folding it into
+    `errors` would make every later run fail and train the caller to stop
+    reading the exit code.
+    """
+    docs = tmp_path / "docs"
+    locked = docs / "locked"
+    locked.mkdir(parents=True)
+    (locked / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["index", "--root", "docs"]) == 0
+    capsys.readouterr()
+
+    locked.chmod(0o000)
+    try:
+        rc = cli.main(["index", "--root", "docs"])
+    finally:
+        locked.chmod(0o755)
+
+    out = json.loads(capsys.readouterr().out.strip())
+    assert rc == 0
+    assert out["errors"] == []
+    assert out["warnings"]
+    assert out["pruned"] == 0
 
 
 def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):

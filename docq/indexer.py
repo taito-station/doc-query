@@ -12,6 +12,7 @@ import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from . import extractor_pdf as _extractor
 from . import store as _store
@@ -75,8 +76,11 @@ def _abs_path(rel: str, repo_root: Path) -> Path:
     return Path(os.path.normpath(repo_root / rel))
 
 
-def _stat_or_none(path: Path) -> os.stat_result | None | bool:
-    """Sentinel-free three-way stat: stat_result, False (absent), None (unknown).
+def _stat_or_none(path: Path) -> os.stat_result | Literal[False] | None:
+    """Three-way stat: stat_result (present), False (absent), None (unknown).
+
+    Callers must compare with ``is False`` / ``is None``; ``not st`` would
+    collapse the two apart cases into one.
 
     Neither ``Path.exists`` nor ``os.path.exists`` can express the third
     answer, and both are wrong for this. ``Path.exists`` lets
@@ -122,6 +126,49 @@ def _is_usable_root(path: Path) -> tuple[bool, str]:
     if not stat.S_ISDIR(st.st_mode):
         return False, "root is not a directory"
     return True, ""
+
+
+def _walk_pdfs(root: Path, stats: "IndexStats") -> list[Path]:
+    """PDFs under `root`, in a stable order, reporting what could not be read.
+
+    `Path.rglob` is unusable for this in two ways. It drops unreadable
+    directories without a word, so a permissions problem is indistinguishable
+    from an empty tree — the same "an empty scan looks like success" failure
+    the prune side took three rounds to close. And filtering its results with
+    `Path.is_file` raises `PermissionError` for a directory that is readable
+    but not traversable, which aborts the whole run. `os.walk` reports both
+    through `onerror` and classifies entries itself, so neither case is
+    silent and neither one crashes.
+
+    Suffix matching is case-insensitive: `*.pdf` as a glob would silently
+    drop REPORT.PDF even on a case-insensitive filesystem.
+    """
+    found: list[Path] = []
+
+    def on_error(exc: OSError) -> None:
+        target = getattr(exc, "filename", None) or root
+        stats.warnings.append(f"{target}: cannot read directory ({exc.strerror})")
+
+    # followlinks=False: a symlinked directory would otherwise let a loop
+    # run forever, and its contents are reachable from their real location.
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=on_error,
+                                                  followlinks=False):
+        for name in filenames:
+            if not name.lower().endswith(PDF_SUFFIX):
+                continue
+            path = Path(dirpath) / name
+            st = _stat_or_none(path)
+            if st is False:
+                # A symlink whose target is gone. Leaving it out of the scan
+                # is what lets prune remove the stale entry.
+                continue
+            if st is None:
+                stats.warnings.append(f"{path}: cannot stat, skipped")
+                continue
+            if stat.S_ISREG(st.st_mode):
+                found.append(path)
+    found.sort()
+    return found
 
 
 def _windows(text: str, win: int = FIXED_WINDOW_CHARS,
@@ -188,11 +235,18 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
             ))
     # First write of the run: claim the store here, so nothing above this
     # point can bind a base directory it never actually indexed.
-    _store.bind_base_dir(conn, repo_root)
-    _store.upsert_file(conn, rel, sha1, st.st_mtime, st.st_size)
-    _store.delete_chunks_for(conn, rel)
-    if rows:
-        _store.insert_chunks(conn, rows)
+    #
+    # Wrapped in a savepoint because the writes are not independent: the
+    # foreign key forces `upsert_file` to precede `insert_chunks`, so a
+    # failure in between would leave the file recorded under its new sha1
+    # with no chunks — and every later run would skip it as unchanged. The
+    # caller still owns the commit.
+    with _store.savepoint(conn, "index_one_file"):
+        _store.bind_base_dir(conn, repo_root)
+        _store.upsert_file(conn, rel, sha1, st.st_mtime, st.st_size)
+        _store.delete_chunks_for(conn, rel)
+        if rows:
+            _store.insert_chunks(conn, rows)
     return len(rows)
 
 
@@ -222,15 +276,7 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             continue
         scanned_roots.append(root)
         found_under[root] = 0
-        # Match the suffix case-insensitively: `rglob` is case-sensitive even
-        # on a case-insensitive filesystem, so `*.pdf` silently drops
-        # REPORT.PDF. `is_file` because a *directory* named `archive.pdf`
-        # matches the suffix too, and would fail every scan from then on.
-        # Suffix first: `is_file` stats every entry, and only PDF candidates
-        # are worth that syscall.
-        pdfs = (p for p in root.rglob("*")
-                if p.suffix.lower() == PDF_SUFFIX and p.is_file())
-        for pdf_path in sorted(pdfs):
+        for pdf_path in _walk_pdfs(root, stats):
             stats.scanned += 1
             found_under[root] += 1
             rel = rel_path(pdf_path, repo_root)

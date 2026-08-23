@@ -239,9 +239,10 @@ def test_index_paths_keeps_entries_it_cannot_verify(tmp_path, sample_pdf):
 def test_index_paths_prunes_a_symlink_whose_target_is_gone(tmp_path, sample_pdf):
     """A link to a deleted file is gone, not present.
 
-    `os.lstat` would call the dangling link present and leave the entry —
-    and the scan drops it too, so nothing would ever remove it and searches
-    would keep returning text for a file that no longer exists.
+    Following the link is what makes this work: a stat of the link itself
+    succeeds, and calling that "present" leaves the entry in the index while
+    the scan drops it — so nothing would ever remove it and searches would
+    keep returning text for a file that no longer exists.
     """
     docs = tmp_path / "docs"
     target = tmp_path / "target"
@@ -283,6 +284,86 @@ def test_index_paths_warns_when_a_whole_root_is_pruned(tmp_path, sample_pdf):
     assert store.get_file_meta(conn, "docs/sample.pdf") is None
     assert len(stats.warnings) == 1
     assert "candidates for removal" in stats.warnings[0]
+
+
+@posix_permissions_only
+def test_index_paths_reports_a_directory_it_cannot_read(tmp_path, sample_pdf):
+    """An unreadable directory must not read as an empty one.
+
+    Readable-but-not-traversable (0o400) is the case that used to abort the
+    whole run: the scan listed the entry and then raised on stat'ing it.
+    """
+    docs = tmp_path / "docs"
+    weird = docs / "weird"
+    weird.mkdir(parents=True)
+    (weird / "a.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    weird.chmod(0o400)
+    try:
+        stats = indexer.index_paths(conn, tmp_path, [docs])
+    finally:
+        weird.chmod(0o755)
+
+    assert stats.errors == [], "an unreadable entry must not abort the run"
+    assert stats.scanned == 0
+    assert any("cannot stat" in w for w in stats.warnings)
+
+
+@posix_permissions_only
+def test_index_paths_reports_an_unreadable_root(tmp_path, sample_pdf):
+    """A root that cannot be listed must not look like an empty directory."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    docs.chmod(0o000)
+    try:
+        stats = indexer.index_paths(conn, tmp_path, [docs])
+    finally:
+        docs.chmod(0o755)
+
+    assert stats.scanned == 0
+    assert any("cannot read directory" in w for w in stats.warnings)
+
+
+def test_index_one_file_leaves_no_partial_write_behind(tmp_path, sample_pdf,
+                                                        monkeypatch):
+    """A failure between the writes must not register the file anyway.
+
+    The foreign key forces `upsert_file` before `insert_chunks`, so without
+    a savepoint a failure in between records the new sha1 with no chunks —
+    and every later run skips the file as unchanged.
+    """
+    conn = store.open_store(tmp_path / "index.sqlite")
+    monkeypatch.setattr(store, "insert_chunks", _raise_disk_full)
+
+    with pytest.raises(RuntimeError):
+        indexer.index_one_file(conn, tmp_path, sample_pdf)
+
+    assert store.get_file_meta(conn, "sample.pdf") is None
+    assert store.get_meta(conn, store.BASE_DIR_KEY) is None
+
+    monkeypatch.undo()
+    assert indexer.index_one_file(conn, tmp_path, sample_pdf) > 0
+
+
+def _raise_disk_full(*_args, **_kwargs):
+    raise RuntimeError("database or disk is full")
+
+
+def test_open_store_keeps_an_existing_schema_version(tmp_path):
+    """The version has to survive being opened, or it records nothing."""
+    db = tmp_path / "index.sqlite"
+    conn = store.open_store(db)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+    conn = store.open_store(db)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
 
 
 def test_index_one_file_refuses_a_store_bound_elsewhere(tmp_path, sample_pdf):
