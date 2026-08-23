@@ -1,9 +1,10 @@
-"""SQLite-backed persistent store for the PDF chunk index.
+"""SQLite-backed persistent store for the chunk index.
 
-Schema is intentionally small (adapted from mdq's `store.py`, trimmed to
-what fixed-window PDF chunks need: no headings, no FTS5 mirror, no
-embeddings). BM25 ranking is computed at query time over the chunks loaded
-from this store — fine for the small/medium PDF corpora this tool targets.
+Format-agnostic: a chunk is text plus a location, so the same schema serves
+any extractor. Intentionally small (adapted from mdq's `store.py`, trimmed to
+what fixed-window chunks need: no headings, no FTS5 mirror, no embeddings).
+BM25 ranking is computed at query time over the chunks loaded from this store
+— fine for the small/medium corpora this tool targets.
 """
 from __future__ import annotations
 

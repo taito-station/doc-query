@@ -31,3 +31,36 @@ def test_index_default_root_is_cwd(tmp_path, sample_pdf, monkeypatch, capsys):
     assert rc == 0
     out = json.loads(capsys.readouterr().out.strip())
     assert out["indexed"] == 1
+
+
+def test_index_with_absolute_root_outside_cwd(tmp_path, sample_pdf, monkeypatch,
+                                               capsys):
+    """`--root /abs/path` from an unrelated cwd must index, not traceback."""
+    outside = tmp_path / "outside"
+    workdir = tmp_path / "workdir"
+    outside.mkdir()
+    workdir.mkdir()
+    (outside / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(workdir)
+
+    rc = cli.main(["index", "--root", str(outside)])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["indexed"] == 1
+    assert out["errors"] == []
+
+    rc = cli.main(["search", "--q", "大阪", "--top-k", "3"])
+    assert rc == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines
+    assert json.loads(lines[0])["path"] == "../outside/sample.pdf"
+
+
+def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["index", "--root", "typo"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["scanned"] == 0
+    assert len(out["errors"]) == 1

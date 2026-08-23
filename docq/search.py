@@ -1,5 +1,6 @@
-"""BM25 search over the indexed PDF chunks.
+"""BM25 search over the indexed chunks.
 
+Format-agnostic: operates on whatever an extractor put in the store.
 Adapted from mdq's `search.py`: same core mechanics (BM25 ranking over
 CJK-bigram scoring terms, snippet trimming around the strongest matching
 line, token-budget-aware result assembly), trimmed of the features this

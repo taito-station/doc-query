@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from . import indexer as _indexer
@@ -21,8 +20,11 @@ def _open(db: str):
 
 def cmd_index(args: argparse.Namespace) -> int:
     conn = _open(args.db)
-    repo_root = Path.cwd()
-    roots = [(repo_root / r) for r in (args.root or ["."])]
+    repo_root = Path.cwd().resolve()
+    # `expanduser` so `--root ~/Documents` works from a non-interactive
+    # caller; `resolve` so an absolute root outside the working directory is
+    # compared against `repo_root` on equal terms (see indexer.rel_path).
+    roots = [Path(r).expanduser().resolve() for r in (args.root or ["."])]
     stats = _indexer.index_paths(conn, repo_root, roots, prune=not args.no_prune)
     print(json.dumps({
         "scanned": stats.scanned,
@@ -55,7 +57,8 @@ def cmd_get(args: argparse.Namespace) -> int:
     conn = _open(args.db)
     chunk = _search.get_chunk(conn, args.chunk_id)
     if chunk is None:
-        print(json.dumps({"error": "not found", "chunk_id": args.chunk_id}))
+        print(json.dumps({"error": "not found", "chunk_id": args.chunk_id},
+                          ensure_ascii=False))
         return 1
     print(json.dumps(chunk, ensure_ascii=False))
     return 0
@@ -84,7 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_index.add_argument("--root", action="append",
                           help="Directory to scan for *.pdf (repeatable; default: .)")
     p_index.add_argument("--no-prune", action="store_true",
-                          help="Do not remove index entries for files no longer on disk")
+                          help="Do not remove index entries for files that are gone "
+                               "from the scanned roots (entries indexed from other "
+                               "roots are never pruned)")
     p_index.set_defaults(func=cmd_index)
 
     p_search = sub.add_parser("search", help="BM25 search over the indexed chunks")
@@ -118,7 +123,3 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from docq import indexer, store
 
 
@@ -56,3 +54,64 @@ def test_index_paths_prunes_removed_files(tmp_path, sample_pdf):
     stats2 = indexer.index_paths(conn, tmp_path, [docs])
     assert stats2.pruned == 1
     assert store.stats(conn)["files"] == 0
+    # chunks must go with the file: a surviving orphan would keep showing up
+    # in search results for a file that no longer exists.
+    assert store.stats(conn)["chunks"] == 0
+
+
+def test_index_paths_does_not_prune_files_under_other_roots(tmp_path, sample_pdf):
+    """Indexing root B must leave root A's entries alone.
+
+    They were never scanned this run, so their absence from `seen` says
+    nothing about whether they still exist on disk.
+    """
+    docs = tmp_path / "docs"
+    manuals = tmp_path / "manuals"
+    docs.mkdir()
+    manuals.mkdir()
+    (docs / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    (manuals / "manual.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_paths(conn, tmp_path, [docs])
+    stats = indexer.index_paths(conn, tmp_path, [manuals])
+
+    assert stats.pruned == 0
+    assert store.stats(conn)["files"] == 2
+    assert store.get_file_meta(conn, "docs/sample.pdf") is not None
+
+
+def test_index_paths_accepts_root_outside_repo_root(tmp_path, sample_pdf):
+    """`--root` pointing outside the working directory is the ordinary use."""
+    outside = tmp_path / "outside"
+    workdir = tmp_path / "workdir"
+    outside.mkdir()
+    workdir.mkdir()
+    (outside / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, workdir, [outside])
+
+    assert stats.errors == []
+    assert stats.indexed == 1
+    assert store.get_file_meta(conn, "../outside/sample.pdf") is not None
+
+
+def test_index_paths_reports_missing_root(tmp_path):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [tmp_path / "typo"])
+
+    assert stats.scanned == 0
+    assert len(stats.errors) == 1
+    assert "does not exist" in stats.errors[0]
+
+
+def test_index_paths_matches_uppercase_suffix(tmp_path, sample_pdf):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "REPORT.PDF").write_bytes(sample_pdf.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+
+    assert stats.indexed == 1

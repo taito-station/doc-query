@@ -8,6 +8,7 @@ location to report back to the caller.
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from . import tokens as _tokens
 
 FIXED_WINDOW_CHARS = 1000
 FIXED_WINDOW_OVERLAP = 200
+
+PDF_SUFFIX = ".pdf"
 
 
 @dataclass
@@ -30,11 +33,32 @@ class IndexStats:
 
 
 def _sha1_of_file(path: Path) -> str:
-    h = hashlib.sha1()
+    # Change detection only, never a security boundary.
+    h = hashlib.sha1(usedforsecurity=False)
     with path.open("rb") as f:
         for block in iter(lambda: f.read(65536), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def rel_path(path: Path, repo_root: Path) -> str:
+    """Path key stored in the index, as a POSIX path relative to `repo_root`.
+
+    ``Path.relative_to`` cannot express "outside the root" and raises for a
+    root the caller passed as an absolute path elsewhere on the filesystem —
+    which is the ordinary way to use this tool (``--root ~/Documents`` from
+    any working directory). ``os.path.relpath`` walks up with ``..`` instead,
+    so every readable path gets a key. The only case it still rejects is a
+    different drive on Windows; there the absolute path is the key.
+    """
+    try:
+        return Path(os.path.relpath(path, repo_root)).as_posix()
+    except ValueError:  # different drive (Windows only)
+        return path.as_posix()
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
 
 
 def _windows(text: str, win: int = FIXED_WINDOW_CHARS,
@@ -58,7 +82,7 @@ def _chunk_id(path: str, page: int, part_index: int) -> str:
 
 def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
     """Index a single PDF; returns the number of chunks written (0 if skipped)."""
-    rel = pdf_path.relative_to(repo_root).as_posix()
+    rel = rel_path(pdf_path, repo_root)
     stat = pdf_path.stat()
     sha1 = _sha1_of_file(pdf_path)
     existing = _store.get_file_meta(conn, rel)
@@ -97,12 +121,21 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
     """Walk `roots` for *.pdf files (relative to `repo_root`) and index them."""
     stats = IndexStats()
     seen: set[str] = set()
+    scanned_roots: list[Path] = []
     for root in roots:
         if not root.exists():
+            # A typo'd root must not look like "scanned, found nothing".
+            stats.errors.append(f"{rel_path(root, repo_root)}: root does not exist")
             continue
-        for pdf_path in sorted(root.rglob("*.pdf")):
+        # Resolved so the prune containment check below compares like with
+        # like (macOS /tmp is a symlink to /private/tmp).
+        scanned_roots.append(root.resolve())
+        # Match the suffix case-insensitively: `rglob` is case-sensitive even
+        # on a case-insensitive filesystem, so `*.pdf` silently drops REPORT.PDF.
+        pdfs = (p for p in root.rglob("*") if p.suffix.lower() == PDF_SUFFIX)
+        for pdf_path in sorted(pdfs):
             stats.scanned += 1
-            rel = pdf_path.relative_to(repo_root).as_posix()
+            rel = rel_path(pdf_path, repo_root)
             seen.add(rel)
             try:
                 n = index_one_file(conn, repo_root, pdf_path)
@@ -116,7 +149,14 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
                 stats.skipped += 1
 
     if prune:
+        # Only entries under a root scanned in *this* run are eligible: an
+        # unseen entry there means the file is gone. Entries indexed from
+        # other roots were never looked at, so their absence from `seen`
+        # says nothing about whether they still exist.
         for rel in _store.list_all_paths(conn) - seen:
+            abs_path = (repo_root / rel).resolve()
+            if not any(_is_within(abs_path, root) for root in scanned_roots):
+                continue
             _store.delete_file(conn, rel)
             stats.pruned += 1
 
