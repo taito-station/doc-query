@@ -3,7 +3,7 @@
 A run of CJK characters yields adjacent bigrams (mirrors Lucene's
 CJKBigramFilter); ASCII runs are kept whole. This is the term unit BM25
 ranking matches on; excerpt selection uses a separate, coarser tokenizer
-(see :mod:`pdfq.search`) so the returned snippet is unaffected by it.
+(see :mod:`docq.search`) so the returned snippet is unaffected by it.
 """
 from __future__ import annotations
 

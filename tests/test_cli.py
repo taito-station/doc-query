@@ -1,6 +1,6 @@
 import json
 
-from pdfq import cli
+from docq import cli
 
 
 def test_index_then_search_with_relative_root(tmp_path, sample_pdf, monkeypatch, capsys):

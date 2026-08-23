@@ -1,4 +1,4 @@
-"""CLI entry point: `python -m pdfq <index|search|get|list|stats>`.
+"""CLI entry point: `python -m docq <index|search|get|list|stats>`.
 
 Subcommand surface intentionally mirrors mdq's CLI so usage transfers
 directly for anyone already familiar with it.
@@ -75,9 +75,9 @@ def cmd_stats(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="pdfq")
+    p = argparse.ArgumentParser(prog="docq")
     p.add_argument("--db", default=str(_store.DEFAULT_DB_PATH),
-                    help="Path to the SQLite index (default: .pdfq/index.sqlite)")
+                    help="Path to the SQLite index (default: .docq/index.sqlite)")
     sub = p.add_subparsers(dest="command", required=True)
 
     p_index = sub.add_parser("index", help="Scan PDFs under --root and (re)index them")

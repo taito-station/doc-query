@@ -11,7 +11,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
-DEFAULT_DB_PATH = Path(".pdfq") / "index.sqlite"
+DEFAULT_DB_PATH = Path(".docq") / "index.sqlite"
 
 SCHEMA_VERSION = 1
 

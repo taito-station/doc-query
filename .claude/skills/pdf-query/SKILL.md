@@ -27,11 +27,11 @@ category: planning
 ## 最短呼び出し例
 
 ```sh
-python -m pdfq stats                                                  # 索引存在を確認
-python -m pdfq index --root <PDFが置かれたディレクトリ>                  # 未作成 or 古ければ実行（増分）
-python -m pdfq search --q "<質問の主要キーワード>" --top-k 5 --max-tokens 800
+python -m docq stats                                                  # 索引存在を確認
+python -m docq index --root <PDFが置かれたディレクトリ>                  # 未作成 or 古ければ実行（増分）
+python -m docq search --q "<質問の主要キーワード>" --top-k 5 --max-tokens 800
 # snippetで不足する場合のみ本文全体を取得:
-python -m pdfq get --chunk-id <返ってきたID>
+python -m docq get --chunk-id <返ってきたID>
 ```
 
 ## 目的
@@ -49,14 +49,14 @@ python -m pdfq get --chunk-id <返ってきたID>
 
 ## 手順サマリ
 
-1. **索引の確認と作成**: `python -m pdfq stats` → 0件または古ければ `python -m pdfq index --root <dir>`。
+1. **索引の確認と作成**: `python -m docq stats` → 0件または古ければ `python -m docq index --root <dir>`。
    - 増分索引（sha1一致ファイルはスキップ）。既定でディスク上に存在しないファイルを自動prune（`--no-prune`で無効化可）。
-   - 索引DB（既定 `.pdfq/index.sqlite`）はgitignore推奨。セッション間で共有されない前提。
-2. **検索**: `python -m pdfq search --q "クエリ" --top-k 5 --max-tokens 800`
+   - 索引DB（既定 `.docq/index.sqlite`）はgitignore推奨。セッション間で共有されない前提。
+2. **検索**: `python -m docq search --q "クエリ" --top-k 5 --max-tokens 800`
    - 出力: JSONL（1行=1ヒット）。各行は `{"chunk_id","path","location","pages":[start,end],"score","snippet"}`。
    - `--paths` でファイルglobを絞り込み、`--mode grep` で完全一致検索に切替。
    - `--return-unit chunk` でヒットchunkの本文全体を返す（既定 `line` は前後±`--snippet-radius`行）。`--return-unit locations` は本文を返さず所在のみ（同じ予算でより多くの候補を見たいときに使う）。
-3. **本文取得（必要時のみ）**: `python -m pdfq get --chunk-id <ID>`
+3. **本文取得（必要時のみ）**: `python -m docq get --chunk-id <ID>`
 4. 結果をそのままAgentに渡す（生PDFを読み込まない）。
 
 ## Context節約のコツ
@@ -70,6 +70,6 @@ python -m pdfq get --chunk-id <返ってきたID>
 - **ローカルPDFから答える**タイプの質問では、対象が`.pdf`と分かっている、または分からなくても本Skillを最初に試行する。
 - 失敗時の代替手順:
   1. ヒットが0件 → 異なるキーワードで1〜2回再試行
-  2. それでも0件 → `python -m pdfq list` で索引済みファイル・ページ一覧を確認
+  2. それでも0件 → `python -m docq list` で索引済みファイル・ページ一覧を確認
   3. それでも特定できない → ホスト側のPDF読込ツールで生ファイルへフォールバック
-- 本Skillは`.claude/skills/`配下からClaude Codeに読み込まれる。GitHub Copilot等の別ホストで使う場合は`.github/skills/pdf-query/SKILL.md`に同内容を配置する（CLI本体`pdfq`はhost非依存で変更不要）。
+- 本Skillは`.claude/skills/`配下からClaude Codeに読み込まれる。GitHub Copilot等の別ホストで使う場合は`.github/skills/pdf-query/SKILL.md`に同内容を配置する（CLI本体`docq`はhost非依存で変更不要）。

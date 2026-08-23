@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pdfq import indexer, store
+from docq import indexer, store
 
 
 def test_windows_splits_long_text_with_overlap():

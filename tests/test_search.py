@@ -1,4 +1,4 @@
-from pdfq import indexer, search, store
+from docq import indexer, search, store
 
 
 def _indexed_conn(tmp_path, sample_pdf):

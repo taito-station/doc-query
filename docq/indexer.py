@@ -11,7 +11,7 @@ import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import extractor as _extractor
+from . import extractor_pdf as _extractor
 from . import store as _store
 from . import tokens as _tokens
 

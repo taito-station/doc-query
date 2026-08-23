@@ -1,7 +1,7 @@
 [project]
-name = "pdf-query"
+name = "doc-query"
 version = "0.1.0"
-description = "Local, index-and-search retrieval over PDF files that returns small relevant snippets instead of full text, to minimize LLM context/token consumption."
+description = "Local, index-and-search retrieval over office documents (PDF today; pptx/xlsx planned) that returns small relevant snippets instead of full text, to minimize LLM context/token consumption."
 requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,4 +18,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["pdfq*"]
+include = ["docq*"]
