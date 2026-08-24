@@ -6,7 +6,7 @@ tags: [D21, D17]
 sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
-distilled_from_sha: "5f5f0a3"
+distilled_from_sha: "8eb41b2"
 updated: "2026-08-24"
 ---
 
