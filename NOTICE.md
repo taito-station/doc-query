@@ -14,5 +14,9 @@ no Markdown heading hierarchy.
 `docq/indexer.py`'s fixed-size sliding-window chunking (window/overlap size)
 follows the same defaults as `mdq/strategies.py`'s `fixed_window` strategy.
 
+`docq/cli.py` borrows the subcommand names and their surface (`index` /
+`search` / `get` / `list` / `stats`) from `mdq`'s CLI so usage transfers, but
+no code is copied.
+
 Original repository license: MIT. See `LICENSE` in this repository for the
 full text as applied to this project.

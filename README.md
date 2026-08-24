@@ -26,6 +26,30 @@ python -m docq stats
 python -m docq get --chunk-id <ID>
 ```
 
+実測（3ページの日本語PDF）: 全文 10,566 トークン → 検索結果 647〜790 トークン（**92〜94% 削減**）。
+
+## ドキュメント
+
+確定した設計・要件・決定の記録は `docs/knowledge/` にある。読む入口はここ。
+
+| 文書 | 内容 |
+|---|---|
+| [docs/knowledge/README.md](docs/knowledge/README.md) | 文書の規約（2層蒸留・frontmatter・REQ-ID・決定ログ・機械検査の範囲） |
+| [docs/knowledge/product-goals.md](docs/knowledge/product-goals.md) | 目的・成功条件・対象境界と非目標 |
+| [docs/knowledge/index-and-search.md](docs/knowledge/index-and-search.md) | 索引の単位・スコアリング・返却単位・トークン予算・CLIの出力契約 |
+| [docs/knowledge/search-quality-evaluation.md](docs/knowledge/search-quality-evaluation.md) | 検索品質の計測方法と受入基準 |
+| [docs/knowledge/glossary.md](docs/knowledge/glossary.md) | 用語（特に「トークン」の3つの別物） |
+| [docs/knowledge/vendoring-and-upstream.md](docs/knowledge/vendoring-and-upstream.md) | mdqからのvendor範囲と責任境界 |
+| [docs/knowledge/ci-and-checks.md](docs/knowledge/ci-and-checks.md) | CIと機械検査の構成 |
+| [docs/knowledge/doc-classes.md](docs/knowledge/doc-classes.md) | 文書クラスの定義（正本） |
+
+**要件は各文書の REQ 表**にあり、`REQ-D19-006` のように名指しできる。現時点で Confirmed 10 件 /
+Tentative 18 件。**検証手段の無い要件は Confirmed にしない**規約なので、Tentative には「未実装」と
+「実装は満たしているが測る手段が無い」が混在する。内訳は
+[index-and-search.md](docs/knowledge/index-and-search.md) の「Tentative の内訳」に表で置いてある。
+
+開発時の判断規律は [CLAUDE.md](CLAUDE.md)。
+
 ## Claude Code Skill
 
 `.claude/skills/pdf-query/SKILL.md` にPDF向けのSkill定義がある（スコープはPDFのみ。pptx/xlsx対応時は別途追加予定）。このリポジトリ配下（または`.claude/skills/`にコピーした先）でClaude Codeを使うと、PDFに関する質問に対して自動的にこのツールが優先利用される。
