@@ -4,6 +4,9 @@ kind: knowledge
 doc_class: [D19, D08, D10]
 tags: [D19, D08, D10]
 sources:
+  - docq/indexer.py
+  - docq/search.py
+  - docq/store.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "8eb41b2"
@@ -84,13 +87,17 @@ PDF には Markdown のような見出し構造が無いので、`mdq` が使う
 
 ### BM25
 
-`search.py` の `_MiniBM25`。定数は 2 つで、どちらも**実装内の単一の値**として持つ（呼び出しごとに
-組み立てない）。
+`search.py` の `_MiniBM25`。ランキングに効く定数は 2 つ。
 
-| 定数 | 値 | 置き場所 |
+| 定数 | 実際に使われる値 | 置き場所 |
 |---|---:|---|
-| 文書長正規化 `b` | 0.2 | `search.LENGTH_NORM_B` |
-| 語頻度飽和 `k1` | 1.5 | `_MiniBM25.__init__` の既定値 |
+| 語頻度飽和 `k1` | 1.5 | `_MiniBM25.__init__` の既定値（単一） |
+| 文書長正規化 `b` | 0.2 | `search.LENGTH_NORM_B`。**`__init__` の既定値は 0.75 で別物** |
+
+**`b` は実装内に 2 つの値を持っている。** 唯一の呼び出し（`_MiniBM25(corpus, b=LENGTH_NORM_B)`）が
+0.2 を渡しているので現状の挙動は 0.2 だが、`_MiniBM25` を他所から素で構築すると既定の 0.75 が効く。
+移植元の要求（`FR-MDQ-06`）は「係数は実装内の単一の定数として定義し、利用可能な BM25 実装のいずれにも
+同じ値で適用する」と定めており、**この形はそれに反している**。REQ-D19-017 として起票した。
 
 どちらも REQ-D17-006 の「ランキングに影響する既定値」に含まれるので、変更するには回帰計測が要る。
 
@@ -154,20 +161,22 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-014 | `index` の出力は `errors`（実行が成立しなかった。終了コード 1）と `warnings`（成立したが知っておくべきこと。終了コードに影響しない）を分ける | `tests/test_cli.py::test_warnings_are_reported_without_failing_the_run` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-015 | 1 ファイル分の索引書き込みは原子的とする。途中で失敗したファイルが「登録済みだがチャンク 0 件」として残り、以後スキップされ続けることがない | `tests/test_indexer.py::test_index_one_file_leaves_no_partial_write_behind` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
+| REQ-D19-017 | BM25 の文書長正規化係数は実装内の単一の値として定義する。既定値と呼び出し側で異なる値が存在してはならない | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
 <!-- REQ:end D19 -->
 
 ### Tentative の内訳
 
 規約上 Tentative には 2 種類あるので、どちらなのかを明記する。
 
-| REQ | 種別 | 解消の道筋 |
+| 要件 | 種別 | 解消の道筋 |
 |---|---|---|
-| REQ-D19-004 | 実装は満たすが**測る手段が無い** | 予算見積りの基準を固定するテストを足す |
-| REQ-D19-005 | 実装は満たすが**測る手段が無い** | `tests/test_tokenize.py` を新設する（移植元が mdq にある） |
-| REQ-D19-006 / 007 / 010 | **未実装**（[#2](https://github.com/taito-station/doc-query/issues/2)） | 回帰計測のベースライン取得後に NFKC を入れる |
-| REQ-D19-008 | 実装は満たすが**測る手段が無い** | grep モードが正規化を経ないことを固定するテストを足す |
-| REQ-D19-009 | **検証手段が不十分** | 空クエリの側は固定済みだが、「スコアリング語が取れないときのみ落ちる」側が未検証。上記「grep へのフォールバック」で門番が曖昧な点も未解消 |
-| REQ-D19-016 | **未実装** | 下記 |
+| D19-004 | 実装は満たすが**測る手段が無い** | 予算見積りの基準を固定するテストを足す |
+| D19-005 | 実装は満たすが**測る手段が無い** | `tests/test_tokenize.py` を新設する（移植元が mdq にある） |
+| D19-006 / 007 / 010 | **未実装**（[#2](https://github.com/taito-station/doc-query/issues/2)） | 回帰計測のベースライン取得後に NFKC を入れる |
+| D19-008 | 実装は満たすが**測る手段が無い** | grep モードが正規化を経ないことを固定するテストを足す |
+| D19-009 | **検証手段が不十分** | 空クエリの側は固定済みだが、「スコアリング語が取れないときのみ落ちる」側が未検証。上記「grep へのフォールバック」で門番が曖昧な点も未解消 |
+| D19-016 | **未実装** | 下記 |
+| D19-017 | **実装ギャップ** | `_MiniBM25.__init__` の `b` の既定値を `LENGTH_NORM_B` に寄せる |
 
 **REQ-D19-009 だけは検証手段が非空なのに Tentative** にしてある。既存のテストが押さえているのは
 「空クエリは 0 件」までで、要件の主節（**スコアリング語が取れないときに限り**フォールバックする）を

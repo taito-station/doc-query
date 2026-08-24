@@ -4,6 +4,7 @@ kind: knowledge
 doc_class: [D07]
 tags: [D07]
 sources:
+  - docs/knowledge/README.md
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "8eb41b2"

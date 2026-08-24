@@ -13,10 +13,14 @@ HVE（[dahatake/HypervelocityEngineering](https://github.com/dahatake/Hyperveloc
 文書クラス **D01〜D21 を番号・名称を変えずに採用**したもの。番号を変えないのは、将来 HVE や
 [paddock](https://github.com/taito-station/paddock) の資産を追加移植するときに読み替えを発生させない
 ため。**doc-query 固有クラス（D22 以降）は追加しない**（判断と再開条件は [README.md](README.md) の
-決定ログ `#1`）。
+決定ログ `#1-1`）。
 
 各文書は frontmatter の `doc_class` で自分のクラスを宣言する。**このファイルがクラス定義の正本**で、
 `scripts/check-doc-classes.py` が本ファイルと全文書の宣言の整合を機械検査する。
+
+> **機械検査はまだ稼働していない。** 本文で現在形で書いている検査は
+> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。稼働状況は
+> [ci-and-checks.md](ci-and-checks.md)、検査に課す仕様は [README.md](README.md) が持つ。
 
 > このファイル自身には `doc_class` を付けない（クラス定義そのものであってクラス付き文書ではない）。
 > [README.md](README.md) も同様に付けない（規約文書であり frontmatter を持たない）。
@@ -81,6 +85,10 @@ tags: [D19, D08]        # ミラー。doc_class と完全一致させる（check
 
 **N/A クラスを `doc_class` に指定した文書があれば checker はエラーにする**（宣言と実態の矛盾を
 放置しない）。
+
+> 表の書式も checker がパースする契約。`| D03 | 理由 | 再開条件 |` の **3 列**を崩さない。
+> **`N/A の理由` と `再開条件` はどちらも空にできない**——再開条件の無い n/a は、閉じたのか忘れたのかを
+> 区別できない。
 
 **解除は 1 つの PR で完結させる**——本表から行を削除し、一覧の状態を `active` に変え、**同じ PR で
 そのクラスの文書を 1 本以上追加する**。「active かつ 0 本を作らない」方針があるので、文書を伴わない

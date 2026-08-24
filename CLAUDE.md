@@ -3,6 +3,10 @@
 作業時の判断規律のみを扱う。構成と手順は [README.md](README.md)、文書規約の全体は
 [docs/knowledge/README.md](docs/knowledge/README.md) にあるので、ここには重複を書かない。
 
+> **機械検査はまだ稼働していない。** 以下で「CI が落とす」「CI が検出する」と書いている検査は
+> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。**それまでは手で
+> 担保する**——規約に書いてあるから守られている、と読まないこと。
+
 ## ドキュメント / ナレッジ運用
 
 doc-query の文書は HVE（[dahatake/HypervelocityEngineering](https://github.com/dahatake/HypervelocityEngineering), MIT）の

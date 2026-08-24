@@ -32,7 +32,7 @@ HVE 由来の開発フローを doc-query へ導入するにあたって判断�
 
 **回答: (a) Actions + pre-push の両方。**
 
-**根拠**: `docs/knowledge/ci-and-checks.md` の決定ログ `#1` に記載。baseball-ticket が CI を持たない
+**根拠**: `docs/knowledge/ci-and-checks.md` の決定ログ `#1-1` に記載。baseball-ticket が CI を持たない
 のは文書専用リポジトリだからで、コードと文書が同居する doc-query には当てはまらない。
 
 ---
@@ -63,7 +63,7 @@ HVE 由来の開発フローを doc-query へ導入するにあたって判断�
 **回答: 追加しない。**
 
 **根拠**: 前者は D08 + D19、後者は D17 に必須項目が全部埋まる形で収まる。詳細と再開条件は
-`docs/knowledge/doc-classes.md` の決定ログ `#1`。
+`docs/knowledge/doc-classes.md` の決定ログ `#1-1`。
 
 ---
 
