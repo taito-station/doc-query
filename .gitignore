@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
-.pdfq/
+.docq/
 *.egg-info/
 build/
 dist/
