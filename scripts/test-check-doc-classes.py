@@ -21,8 +21,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 CHECKER = HERE / "check-doc-classes.py"
 
-# 検査対象を組み立てるのに要るもの。docq/ は sources が指すので要る。
-COPY = ("docs", "docq", "CLAUDE.md", "README.md", "NOTICE.md", ".gitignore")
+# 検査対象を組み立てるのに要るもの。docq/ .github/ scripts/ は sources が
+# 指すので、欠けると「sources が実在しない」で対照ケースが落ちる。
+COPY = ("docs", "docq", "scripts", ".github",
+        "CLAUDE.md", "README.md", "NOTICE.md", ".gitignore")
 
 results: list[tuple[bool, str, str]] = []
 

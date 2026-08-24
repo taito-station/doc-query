@@ -23,10 +23,23 @@ else
     echo "    skip: pytest が無い（CI が担保する）"
 fi
 
+# 出力を捨てると失敗の理由が分からなくなる。成功時だけ要約に畳む。
+quiet_run() {
+    out=$(mktemp)
+    if "$@" >"$out" 2>&1; then
+        tail -n 1 "$out"
+        rm -f "$out"
+    else
+        cat "$out"
+        rm -f "$out"
+        return 1
+    fi
+}
+
 if command -v python3 >/dev/null 2>&1; then
     echo "==> 検査スクリプト自身の回帰テスト"
-    python3 scripts/test-check-doc-classes.py >/dev/null
-    python3 scripts/test-check-decision-log-immutability.py >/dev/null
+    quiet_run python3 scripts/test-check-doc-classes.py
+    quiet_run python3 scripts/test-check-decision-log-immutability.py
 
     echo "==> 文書の機械検査"
     python3 scripts/check-doc-classes.py
