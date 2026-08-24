@@ -4,6 +4,7 @@ kind: knowledge
 doc_class: [D21, D17]
 tags: [D21, D17]
 sources:
+  - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
 distilled_from_sha: "5f5f0a3"
 updated: "2026-08-24"
@@ -28,12 +29,14 @@ updated: "2026-08-24"
 ## fail-open を作らない
 
 この原則が最も重要で、doc-query の実装側でも同じ型の欠陥を 5 巡にわたって潰してきた
-（[index-and-search.md](index-and-search.md) の決定ログ）。**「何も見つからなかった」を「問題なし」と
-報告する経路を作らない。**
+（実測の記録は [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md)、判断は
+[index-and-search.md](index-and-search.md) の決定ログ `#1-3`）。**「何も見つからなかった」を
+「問題なし」と報告する経路を作らない。**
 
 具体的には次を「違反」ではなく**「検査が成立していない」**として扱い、`--warn-only` でも抑止しない。
 
-- マーカー（`doc-classes` / `doc-classes-na` / `doc-classes-index` / `REQ`）の欠落
+- マーカーの欠落。**5 種類**（`doc-classes` / `doc-classes-na` / `doc-classes-index` / `REQ` /
+  `decision-log`）。正本は [README.md](README.md) の「何が機械検査されるか」
 - 検査対象の文書が 0 件
 - 表の書式が崩れた行（黙って落とすと、そのクラスが「未定義」になって参照側が全部 error になり、
   原因が読めなくなる）
@@ -43,8 +46,18 @@ updated: "2026-08-24"
 **「検査自身の回帰テスト → 本番検査」の順に走らせる。** 本番検査を先にすると、落ちた瞬間に判定器の
 健全性を確かめる手段を同時に失う。
 
-CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。pre-push は `python3` や `reportlab` が無ければ
-**スキップして理由を出す**——未セットアップの環境で push を止めない。担保は CI 側にある。
+CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。
+
+**pre-push のスキップ判定は検査の単位ごとに行う。** 文書検査は標準ライブラリだけで動くので条件は
+`python3` の有無だけ。評価計測は `reportlab` を要る。**まとめて 1 つの条件にすると、文書検査に無関係な
+依存が欠けただけで文書検査まで黙って飛ぶ**——この文書自身が禁じている fail-open になる。
+
+| 検査 | スキップ条件 |
+|---|---|
+| 文書検査（`check-doc-classes.py` ほか） | `python3` が無い |
+| 評価計測（ゴールデンクエリ） | `reportlab` を import できない |
+
+スキップしたときは**理由を出す**。未セットアップの環境で push を止めない代わりに、担保は CI 側にある。
 
 ## ジョブ構成
 
@@ -73,11 +86,12 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
 
 ---
 
+<!-- decision-log:begin -->
 ## 決定ログ
 
 <!-- この節は append-only です。既存エントリの変更・削除は CI が検出します。 -->
 
-### #1: 機械検査を GitHub Actions と pre-push の両方で走らせる (2026-08-24) — 採用
+### #1-1: 機械検査を GitHub Actions と pre-push の両方で走らせる (2026-08-24) — 採用
 
 #### コンテキスト
 
@@ -110,3 +124,5 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
   インストールが要り、「`python3` があれば動く」性質を失う。その制約のために `doc_class` / `tags` は
   フロースタイル 1 行に強制する
 - 検査スクリプト自身の回帰テストを持ち、本番検査より先に走らせる
+
+<!-- decision-log:end -->

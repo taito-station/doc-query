@@ -88,16 +88,25 @@ $ python -c "import sys; sys.path.insert(0,'.'); from mdq.tokenize import scorin
 
 （`~/workspace/HypervelocityEngineering` で実行）
 
-**移植時に持ち込んだバグではなく、vendor 元から継承したもの。** 上流で検出されていない理由は、
-mdq のゴールデンクエリが英語中心で日本語の全角ケースを含まないため。実際の内容:
+**移植時に持ち込んだバグではなく、vendor 元から継承したもの。**
 
-```json
-{"id": "REQ-01",
- "q": "markdown query golden query top-1 top-k accuracy",
- "group": "requirements",
- "paths": ["hve-dev/requirement-definition.md"],
- "expected": [{"path": "hve-dev/requirement-definition.md", "anchor": "- **FR-MDQ-01**:"}]}
+上流で検出されていない理由を、ゴールデンクエリ集を集計して確かめた。
+
 ```
+mdq/golden-queries.json:         全40件 / 日本語 20件 / 全角英数記号 0件
+mdq/golden-queries-holdout.json: 全20件 / 日本語 19件 / 全角英数記号 0件
+```
+
+**日本語が足りないのではなく、全角英数を含むクエリが 1 件も無い。** 日本語クエリの実例:
+
+```
+"APP-009 推薦アーキテクチャ Webフロントエンド クラウド"
+"SVC-03 リワード管理サービス"
+"サービス × データストア 所有権 マトリクス"
+```
+
+型番や ID を含むものもあるが、いずれも半角。**「日本語を入れたから大丈夫」では、この欠陥は捉えられ
+なかった。**
 
 ## 既存テストが素通りした理由
 

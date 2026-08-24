@@ -43,8 +43,10 @@ python -m docq get --chunk-id <ID>
 | [docs/knowledge/ci-and-checks.md](docs/knowledge/ci-and-checks.md) | CIと機械検査の構成 |
 | [docs/knowledge/doc-classes.md](docs/knowledge/doc-classes.md) | 文書クラスの定義（正本） |
 
-**要件は各文書の REQ 表**にあり、`REQ-D19-006` のように名指しできる。`status` が `Tentative` の要件は
-「実装は満たしているが測る手段が無い」か「未実装」のいずれかで、区別は本文に書いてある。
+**要件は各文書の REQ 表**にあり、`REQ-D19-006` のように名指しできる。現時点で Confirmed 10 件 /
+Tentative 17 件。**検証手段の無い要件は Confirmed にしない**規約なので、Tentative には「未実装」と
+「実装は満たしているが測る手段が無い」が混在する。内訳は
+[index-and-search.md](docs/knowledge/index-and-search.md) の「Tentative の内訳」に表で置いてある。
 
 開発時の判断規律は [CLAUDE.md](CLAUDE.md)。
 

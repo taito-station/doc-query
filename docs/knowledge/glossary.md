@@ -4,6 +4,7 @@ kind: knowledge
 doc_class: [D07]
 tags: [D07]
 sources:
+  - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "5f5f0a3"
 updated: "2026-08-24"
@@ -56,5 +57,20 @@ updated: "2026-08-24"
 | **error** | 要求どおりに実行できなかった。ただし成功した分は索引に反映されている | 1 |
 | **warning** | 実行は成立したが知っておくべきこと。自然に解消しない条件を含む | 影響しない |
 
-文書側の `status`（`Confirmed` / `Tentative` / `Conflict` / `Retired`）は
-[README.md](README.md) が正本。
+**文書の `status` と REQ 行の `status` は値域が違う。**
+
+| どこ | 値域 |
+|---|---|
+| frontmatter（文書全体） | `Confirmed` / `Tentative` / `Conflict` の **3 値** |
+| REQ 表の行 | 上記 3 値 ＋ **`Retired`**（かつて要件だったが取り下げた） |
+
+`Retired` は REQ 行専用。文書に付けることはない。正本は [README.md](README.md)。
+
+## 文書運用の語
+
+| 用語 | 意味 |
+|---|---|
+| **2 層モデル** | 一次資料（`docs/original-docs/` + `docs/qa/`）と確定知（`docs/knowledge/`）の**2 つの層**を指す。ディレクトリの数ではない。確定知が 1 ディレクトリで足りることを「knowledge 1 層」と言うのは、この 2 層のうち下側の内訳の話 |
+| **蒸留** | 一次資料と質問票の回答を突き合わせ、確定知へ**差分マージ**すること。全書き換えではなく冪等に行う |
+| **stale** | `sources` に挙げたファイルが `distilled_from_sha` より後に内容変更されている状態。「この知はもう最新のリポジトリ状態を反映していない」ことを表す |
+| **決定ログ** | 各確定知の末尾にある append-only の決定記録。本文が「今どうなっているか」、決定ログが「いつ・なぜそう決めたか」 |
