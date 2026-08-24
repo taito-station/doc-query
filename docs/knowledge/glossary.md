@@ -7,7 +7,7 @@ sources:
   - docs/knowledge/README.md
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "8eb41b2"
+distilled_from_sha: "7681fc1"
 updated: "2026-08-24"
 ---
 

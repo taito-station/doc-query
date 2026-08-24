@@ -3,7 +3,7 @@ status: Confirmed
 kind: knowledge
 sources:
   - docs/qa/QA-doc-flow-introduction.md
-distilled_from_sha: "8eb41b2"
+distilled_from_sha: "7681fc1"
 updated: "2026-08-24"
 ---
 
