@@ -5,11 +5,9 @@ original-docs → qa → knowledge 蒸留モデルを doc-query に導入した�
 （HVE 本体の LLM オーケストレータは持ち込まない）。同じモデルを先に導入した
 [taito-station/paddock](https://github.com/taito-station/paddock) の規約を、doc-query の規模に読み替えている。
 
-> **機械検査はまだ稼働していない。** 本文中で現在形で書いている検査は、
-> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。**文書 → 検査の順に
-> しか導入できない**（検査を先に入れると「検査対象 0 件 → error」で自分自身が落ちる）。それまでは
-> 本文の記述は**検査に課す仕様**として読むこと。稼働状況は
-> [ci-and-checks.md](ci-and-checks.md) が持つ。
+> **この規約は機械検査で強制されている。** 実体と実行のしかたは
+> [ci-and-checks.md](ci-and-checks.md)。本文で「error にする」と書いた条件は、
+> `scripts/check-doc-classes.py` が実際に落とす。
 
 ## 2 層モデル
 
@@ -167,6 +165,7 @@ updated: "YYYY-MM-DD"    # 内容を実質更新した日（YAML の date 型を
 | D01 | [product-goals.md](product-goals.md) | 目的・成功条件・非目標 |
 | D17 | [search-quality-evaluation.md](search-quality-evaluation.md) | 検索品質の計測方法と受入基準 |
 | D19 | [index-and-search.md](index-and-search.md) | 索引単位・スコアリング・返却単位・トークン予算 |
+| D21 | [ci-and-checks.md](ci-and-checks.md) | CI と機械検査の構成・実行順序 |
 
 **決定ログで REQ を採番しない。** 決定ログは append-only なので、後から「この決定で REQ-D19-020 を
 追加した」と書き足せない。新しい要件は REQ 表側で採番し、決定 → REQ の紐付けは REQ 表の `出典` 列が
@@ -177,7 +176,7 @@ updated: "YYYY-MM-DD"    # 内容を実質更新した日（YAML の date 型を
 
 ## 何が機械検査されるか
 
-`scripts/check-doc-classes.py` が CI と pre-push で走る（**未稼働**。冒頭の注記を参照）。
+`scripts/check-doc-classes.py` が CI と pre-push で走る。
 **error** にするのは次の条件が成り立たないときで、検査対象は `docs/knowledge/` 直下の `.md` と、
 本文リンクについては加えてリポジトリルートの `CLAUDE.md` / `README.md`。
 

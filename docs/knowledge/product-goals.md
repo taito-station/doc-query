@@ -68,13 +68,15 @@ doc-query は文書を索引し、**質問に関連する小さな snippet だ�
 | REQ-D01-001 | 検索応答は 1 ヒット 1 行の JSON で返し、応答トークン数を呼び出し側が指定した予算に収める。予算を超える場合も先頭 1 件は必ず返す（0 件を返すと呼び出し側が索引の有無と一致の有無を区別できない） | `tests/test_search.py::test_search_respects_max_tokens_budget` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D01-002 | 索引・検索のいずれも外部 API・ネットワークへアクセスしない | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
 | REQ-D01-003 | 索引対象はテキストレイヤーを持つ文書のみとする。スキャン画像の OCR は非目標で、テキストの取れないページは索引に載せない | `tests/test_extractor.py::test_extract_pages_blank_page_yields_empty_string` / `tests/test_indexer.py::test_index_one_file_skips_blank_pages` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
-| REQ-D01-004 | 実物の文書ファイルをリポジトリへコミットしない。評価コーパスは生成元テキストのみをコミットし、文書そのものは生成物として扱う | 未整備 | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Tentative |
+| REQ-D01-004 | 実物の文書ファイルをリポジトリへコミットしない。評価コーパスは生成元テキストのみをコミットし、文書そのものは生成物として扱う | `scripts/check-no-pdf-committed.py`（CI の `docs` ジョブと pre-push） | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 <!-- REQ:end D01 -->
 
-**REQ-D01-002 と REQ-D01-004 が Tentative なのは、どちらも実装は満たしているが測る手段が無いため。**
-検証手段の無い要件を Confirmed にしないのは [README.md](README.md) の規約で、「達成した」と言えるのは
-測り方が決まっているときだけ、という線を引くためにある。両方とも後続 PR で検証手段を与えて Confirmed
-へ上げる。
+**REQ-D01-002 が Tentative なのは、実装は満たしているが測る手段が無いため。** 検証手段の無い要件を
+Confirmed にしないのは [README.md](README.md) の規約で、「達成した」と言えるのは測り方が決まっている
+ときだけ、という線を引くためにある。後続 PR で検証手段を与えて Confirmed へ上げる。
+
+REQ-D01-004 は `scripts/check-no-pdf-committed.py` が入った時点で Confirmed へ上げた——**Tentative は
+恒久的な状態ではなく、測る手段を作れば解消する**という運用の実例。
 
 ---
 

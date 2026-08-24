@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 .docq/
+.docq-eval/
 *.egg-info/
 build/
 dist/

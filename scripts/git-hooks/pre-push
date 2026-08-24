@@ -1,0 +1,49 @@
+#!/bin/sh
+# push 前に、テストと文書の機械検査を走らせる。
+#
+# 実行順序は「検査自身の回帰テスト → 本番検査」。本番検査を先にすると、
+# 落ちた瞬間に判定器がまともかどうかを確かめる手段を同時に失う。
+#
+# スキップ判定は検査の単位ごとに行う。まとめて 1 つの条件にすると、
+# 文書検査に無関係な依存が欠けただけで文書検査まで黙って飛ぶ——
+# docs/knowledge/ci-and-checks.md が禁じている fail-open になる。
+#
+# 導入: scripts/install-git-hooks.sh
+set -e
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+echo "==> pytest"
+if [ -x .venv/bin/python ]; then
+    .venv/bin/python -m pytest tests -q
+elif python3 -c "import pytest" 2>/dev/null; then
+    python3 -m pytest tests -q
+else
+    echo "    skip: pytest が無い（CI が担保する）"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+    echo "==> 検査スクリプト自身の回帰テスト"
+    python3 scripts/test-check-doc-classes.py >/dev/null
+    python3 scripts/test-check-decision-log-immutability.py >/dev/null
+
+    echo "==> 文書の機械検査"
+    python3 scripts/check-doc-classes.py
+    python3 scripts/check-decision-log-immutability.py
+    python3 scripts/check-no-pdf-committed.py
+else
+    echo "==> 文書の機械検査 skip: python3 が無い（CI が担保する）"
+fi
+
+# 評価計測は reportlab（合成コーパスの生成）に依存するので、判定を分ける。
+if [ -x .venv/bin/python ] && .venv/bin/python -c "import reportlab" 2>/dev/null; then
+    if [ -f scripts/eval-golden.py ]; then
+        echo "==> ゴールデンクエリの回帰計測"
+        .venv/bin/python scripts/eval-golden.py --set dev --check-baseline
+    fi
+else
+    echo "==> 評価計測 skip: reportlab が無い（CI が担保する）"
+fi
+
+echo "==> OK"

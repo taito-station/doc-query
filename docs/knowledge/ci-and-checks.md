@@ -1,21 +1,26 @@
 ---
-status: Tentative
+status: Confirmed
 kind: knowledge
 doc_class: [D21, D17]
 tags: [D21, D17]
 sources:
+  - .github/workflows/ci.yml
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
+  - scripts/check-doc-classes.py
 distilled_from_sha: "7681fc1"
 updated: "2026-08-24"
 ---
 
 # CI と機械検査
 
-> **status: Tentative。** ここに書かれた検査は
-> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。**文書 → 検査の順に
-> しか導入できない**——検査を先に入れると「検査対象 0 件 → error」で自分自身が落ちるため。実装が
-> 入った時点で Confirmed に上げる。
+**稼働している。** 実体は `scripts/check-doc-classes.py`（文書クラス・REQ 表・決定ログ）、
+`scripts/check-decision-log-immutability.py`（append-only）、`scripts/check-no-pdf-committed.py`
+（実物の文書・生成物の混入）の 3 本と、それぞれの回帰テスト。GitHub Actions（`.github/workflows/ci.yml`）
+と pre-push（`scripts/git-hooks/pre-push`）が同じスクリプトを同じ順序で呼ぶ。
+
+pre-push の導入は `sh scripts/install-git-hooks.sh`（`core.hooksPath` を張るので、フックの更新は
+自動で反映される）。
 
 ## 何を機械で守るか
 
@@ -84,6 +89,23 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
 | stale 検査のコミット除外（メタデータのみの変更等） | 偽陽性を減らす最適化だが、除外ロジック自体が fail-open の温床（除外対象のコミットを積むほど検査が消える） | 偽陽性が実際に運用の妨げになったとき |
 | `docs/qa/` `docs/original-docs/` のリンク検査 | 一次資料は転記の忠実性が優先で、リンク切れで push を止める価値が薄い | — |
 
+## 要件
+
+<!-- REQ:begin D21 -->
+| REQ-ID | 要件 | 検証手段 | 出典 | status |
+|---|---|---|---|---|
+| REQ-D21-001 | 文書規約の機械検査は GitHub Actions と pre-push の両方で、同じスクリプトを同じ順序で走らせる | `.github/workflows/ci.yml` の `docs` ジョブ / `scripts/git-hooks/pre-push` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-002 | 検査自身の回帰テストを本番検査より先に走らせる。判定器の健全性を、本番検査が落ちる前に確かめる | `.github/workflows/ci.yml` の `docs` ジョブのステップ順 / `scripts/test-check-doc-classes.py` / `scripts/test-check-decision-log-immutability.py` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-003 | マーカーの欠落・検査対象 0 件・表の書式崩れは「違反」ではなく「検査が成立していない」として扱い、`--warn-only` でも抑止しない | `scripts/test-check-doc-classes.py::test_no_targets` / `::test_marker_missing` / `::test_broken_table_row`（いずれも `--warn-only` で rc=1 を検証） | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-004 | 検査スクリプトは標準ライブラリのみで動く。`python3` があれば実行できる性質を保つ | `scripts/test-check-doc-classes.py`（venv を使わず `sys.executable` で実行） | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-005 | pre-push のスキップ判定は検査の単位ごとに行う。ある検査に無関係な依存が欠けただけで別の検査が飛ばない | 未整備 | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Tentative |
+| REQ-D21-006 | CI は `tiktoken` 有無の両方で `pytest` を回す。optional 依存の片側だけが壊れる変更を検出できるようにする | `.github/workflows/ci.yml` の `test` ジョブの matrix | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-007 | stale 検査を行う CI ジョブは全履歴を取得する。shallow clone で判定できないことを「変更なし」と読まない | `.github/workflows/ci.yml` の `docs` ジョブの `fetch-depth: 0` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
+<!-- REQ:end D21 -->
+
+**REQ-D21-005 が Tentative なのは、スキップ経路を自動で踏むテストが無いため。** `python3` や
+`reportlab` を欠いた環境を作って検証する必要があり、実装は満たしているが測れていない。
+
 ---
 
 <!-- decision-log:begin -->
@@ -124,5 +146,50 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
   インストールが要り、「`python3` があれば動く」性質を失う。その制約のために `doc_class` / `tags` は
   フロースタイル 1 行に強制する
 - 検査スクリプト自身の回帰テストを持ち、本番検査より先に走らせる
+
+### #1-2: 検査不成立を違反と区別し、`--warn-only` でも抑止しない (2026-08-24) — 採用
+
+#### コンテキスト
+
+検査には 2 種類の失敗がある。「違反が見つかった」と「**検査が成立しなかった**」である。後者は
+マーカーの欠落・検査対象 0 件・表の書式崩れで起き、いずれも**「違反が無い」ことの証明にならない**。
+
+同じ型の欠陥を実装側で 5 巡にわたって潰してきた（`--root` の走査が短く終わる理由を「対象が無い」と
+解釈して不可逆な削除をする、など）。検査スクリプト自身が同じ罠を踏まないようにする必要があった。
+
+#### 決定
+
+`Report` を error / warning / **fatal** の 3 系統に分け、fatal は `--warn-only` でも終了コード 1 に
+する。fatal に振るのは次の 3 つ。
+
+- 必須マーカーの欠落
+- 検査対象の文書が 0 件
+- 表の書式が崩れた行（黙って落とすと一意性検査や件数の突合から消えて、違反が通る）
+
+**マーカーを両方消せば append-only 検査が消える**経路も、`## 決定ログ` 見出しがマーカー外にあれば
+fatal にすることで塞いだ。
+
+#### 理由
+
+- **`--warn-only` は「全件を眺める」ための道具であって、検査を無効化する手段ではない。** 違反を
+  警告に落とすのは意味があるが、検査が成立していないことまで警告に落とすと、`--warn-only` を付ければ
+  何でも通る抜け道になる。
+- **判定器の健全性は、判定結果とは別に確かめる必要がある。** だから回帰テストを本番検査より先に走らせ、
+  違反を注入して落ちることを 54 パターンで確認している。
+
+#### 却下した代替案
+
+- **すべてを error にして fatal を作らない。** `--warn-only` で全件を眺める用途が失われる。
+  規約を大きく変えるときに 1 件ずつ潰す進め方ができなくなる。
+- **マーカー欠落を warning にする。** paddock が stale 検査で実証したとおり、警告は無視される。
+  しかも「マーカーが無い＝検査していない」を警告で流すと、検査していない状態が常態化する。
+- **検査対象 0 件を正常終了にする。** ディレクトリ名の変更や検査条件の取り違えで検査が丸ごと無効化
+  されても気づけない。**これが最も典型的な fail-open。**
+
+#### 影響
+
+- `--warn-only` を付けても、規約の骨格が壊れていれば CI は落ちる
+- 検査を追加するときは「違反」か「検査不成立」かを先に決める
+- 回帰テストは `--warn-only` での終了コードも検証する（`case(..., warn_only_rc=...)`）
 
 <!-- decision-log:end -->

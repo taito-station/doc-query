@@ -18,10 +18,6 @@ HVE（[dahatake/HypervelocityEngineering](https://github.com/dahatake/Hyperveloc
 各文書は frontmatter の `doc_class` で自分のクラスを宣言する。**このファイルがクラス定義の正本**で、
 `scripts/check-doc-classes.py` が本ファイルと全文書の宣言の整合を機械検査する。
 
-> **機械検査はまだ稼働していない。** 本文で現在形で書いている検査は
-> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。稼働状況は
-> [ci-and-checks.md](ci-and-checks.md)、検査に課す仕様は [README.md](README.md) が持つ。
-
 > このファイル自身には `doc_class` を付けない（クラス定義そのものであってクラス付き文書ではない）。
 > [README.md](README.md) も同様に付けない（規約文書であり frontmatter を持たない）。
 

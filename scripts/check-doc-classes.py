@@ -1,0 +1,562 @@
+#!/usr/bin/env python3
+"""docs/knowledge/ の規約適合を検査する。
+
+規約の正本は docs/knowledge/README.md。このスクリプトはそこに書かれた契約を
+実行するだけで、規約を定義しない。仕様を変えたら README も同じ PR で直す。
+
+標準ライブラリのみで動く。PyYAML を要求すると CI と pre-push の両方で依存
+インストールが要り、「python3 があれば動く」性質を失うため。その制約のために
+frontmatter の doc_class / tags はフロースタイル 1 行に強制している。
+
+終了コード:
+  0  違反なし（warning はあってもよい）
+  1  違反あり、または検査が成立しなかった
+
+--warn-only はローカルで全件を眺めるための確認用。違反を警告扱いにして 0 で
+終わるが、**検査そのものが成立しない条件は抑止しない**——マーカーの欠落、
+検査対象 0 件、表の書式崩れは「違反が無い」ことの証明にならない。
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+KNOWLEDGE_DIR = Path("docs/knowledge")
+ORIGINAL_DOCS_DIR = Path("docs/original-docs")
+REGISTRY = KNOWLEDGE_DIR / "doc-classes.md"
+CONVENTION = KNOWLEDGE_DIR / "README.md"
+# 本文リンクの検査だけはリポジトリルートの 2 本にも及ぶ。文書の改名で
+# 入口のリンクが黙って壊れるのを防ぐため。
+EXTRA_LINK_TARGETS = (Path("CLAUDE.md"), Path("README.md"))
+
+# doc_class を持たない 2 本。除外されるのは doc_class / tags の必須性と
+# 割当索引への掲載だけで、マーカー・書式・sources・stale は適用する。
+NO_DOC_CLASS = {"knowledge/README.md", "knowledge/doc-classes.md"}
+# frontmatter 自体を持たないのは規約文書 1 本のみ。
+NO_FRONTMATTER = {"knowledge/README.md"}
+
+REQ_HEADER = "| REQ-ID | 要件 | 検証手段 | 出典 | status |"
+DOC_STATUS = {"Confirmed", "Tentative", "Conflict"}
+REQ_STATUS = DOC_STATUS | {"Retired"}
+DECISION_STATUS = {"採用", "却下"}
+# 「検証手段が書かれていない」と読むべき値。大小文字は問わない。
+EMPTY_MEANS = {"", "-", "–", "—", "tbd", "unknown", "n/a",
+               "未定", "なし", "未整備"}
+
+FENCE_RE = re.compile(r"^```.*?^```", re.S | re.M)
+INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+DECISION_HEADING_RE = re.compile(r"^## 決定ログ$", re.M)
+DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ — (\S+)$", re.M)
+ANY_H3_RE = re.compile(r"^### (.*)$", re.M)
+
+
+class Report:
+    """error / warning / fatal を集める。
+
+    fatal は「検査が成立していない」——違反の不在を主張できない状態で、
+    --warn-only でも抑止しない。
+    """
+
+    def __init__(self) -> None:
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.fatals: list[str] = []
+
+    def error(self, msg: str) -> None:
+        self.errors.append(msg)
+
+    def warn(self, msg: str) -> None:
+        self.warnings.append(msg)
+
+    def fatal(self, msg: str) -> None:
+        self.fatals.append(msg)
+
+
+def strip_fences(text: str) -> str:
+    """フェンスの中身は規約の見本であって実データではない。行数は保つ。"""
+    return FENCE_RE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
+
+def for_detection(text: str) -> str:
+    """マーカー・表・リンクを『検出』するための正規化。
+
+    インラインコードを潰すのはここだけ。セルの中身（特に検証手段が空扱いか）は
+    生のテキストで判定する——剥がしてから見ると `tests/x.py::test_y` と `TBD` が
+    どちらも空になり、Confirmed の検査が意味を失う。
+    """
+    return INLINE_CODE_RE.sub("``", text)
+
+
+def split_row(line: str) -> list[str] | None:
+    """表の 1 行をセルへ分ける。GFM のエスケープ `\\|` は分割しない。"""
+    s = line.strip()
+    if not s.startswith("|") or not s.endswith("|"):
+        return None
+    cells, cur, i = [], [], 0
+    body = s[1:-1]
+    while i < len(body):
+        if body[i] == "\\" and i + 1 < len(body) and body[i + 1] == "|":
+            cur.append("|")
+            i += 2
+            continue
+        if body[i] == "|":
+            cells.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(body[i])
+        i += 1
+    cells.append("".join(cur).strip())
+    return cells
+
+
+def is_separator(line: str) -> bool:
+    cells = split_row(line)
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", c) for c in cells)
+
+
+def table_rows(block: str, rep: Report, where: str) -> list[list[str]]:
+    """マーカーブロックから見出し行・区切り行を除いたデータ行を返す。
+
+    書式が崩れた行は黙って落とさず fatal にする。落とすと一意性検査や
+    件数の突合から消えて、違反が通ってしまう。
+    """
+    lines = [l for l in block.splitlines() if l.strip().startswith("|")]
+    if len(lines) < 2:
+        rep.fatal(f"{where}: 表の見出し行・区切り行が無い")
+        return []
+    if not is_separator(lines[1]):
+        rep.fatal(f"{where}: 2 行目が区切り行でない")
+        return []
+    out = []
+    for l in lines[2:]:
+        cells = split_row(l)
+        if cells is None:
+            rep.fatal(f"{where}: 表の書式が崩れた行がある: {l[:40]}")
+            continue
+        out.append(cells)
+    return out
+
+
+def extract_block(text: str, name: str) -> str | None:
+    m = re.search(rf"<!-- {name}:begin -->(.*?)<!-- {name}:end -->", text, re.S)
+    return m.group(1) if m else None
+
+
+def parse_frontmatter(raw: str) -> tuple[str | None, str]:
+    if not raw.startswith("---\n"):
+        return None, raw
+    end = raw.find("\n---\n", 3)
+    if end == -1:
+        return None, raw
+    return raw[4:end], raw[end + 5:]
+
+
+def flow_list(fm: str, key: str) -> list[str] | None:
+    m = re.search(rf"^{key}:\s*\[(.*)\]\s*$", fm, re.M)
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    return [x.strip() for x in inner.split(",")] if inner else []
+
+
+def scalar(fm: str, key: str) -> str | None:
+    m = re.search(rf"^{key}:\s*(.+?)\s*$", fm, re.M)
+    return m.group(1) if m else None
+
+
+def block_list(fm: str, key: str) -> list[str]:
+    m = re.search(rf"^{key}:\s*\n((?:[ \t]+-\s*\S.*\n?)+)", fm, re.M)
+    if not m:
+        return []
+    return [re.sub(r"^\s*-\s*", "", l).strip()
+            for l in m.group(1).splitlines() if l.strip()]
+
+
+class Doc:
+    def __init__(self, path: Path, root: Path) -> None:
+        self.path = path
+        self.rel = f"knowledge/{path.name}"
+        raw = path.read_text(encoding="utf-8")
+        self.fm, body = parse_frontmatter(raw)
+        self.body = strip_fences(body)
+        self.detect = for_detection(self.body)
+        self.doc_class = flow_list(self.fm, "doc_class") if self.fm else None
+        self.tags = flow_list(self.fm, "tags") if self.fm else None
+        self.sources = block_list(self.fm, "sources") if self.fm else []
+
+
+def git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(root), *args],
+                          capture_output=True, text=True)
+
+
+# --------------------------------------------------------------------------
+# 検査
+# --------------------------------------------------------------------------
+
+def check_frontmatter(doc: Doc, rep: Report) -> None:
+    if doc.rel in NO_FRONTMATTER:
+        if doc.fm is not None:
+            rep.error(f"{doc.rel}: frontmatter を持たない規約なのに存在する")
+        return
+    if doc.fm is None:
+        rep.error(f"{doc.rel}: frontmatter が無い")
+        return
+
+    st = scalar(doc.fm, "status")
+    if st not in DOC_STATUS:
+        rep.error(f"{doc.rel}: status の値域外 {st!r}（{sorted(DOC_STATUS)}）")
+    if scalar(doc.fm, "kind") != "knowledge":
+        rep.error(f"{doc.rel}: kind は knowledge 固定")
+    upd = scalar(doc.fm, "updated")
+    if not (upd and re.fullmatch(r'"\d{4}-\d{2}-\d{2}"', upd)):
+        rep.error(f"{doc.rel}: updated はクォートした YYYY-MM-DD にする（{upd!r}）")
+    sha = scalar(doc.fm, "distilled_from_sha")
+    if not (sha and re.fullmatch(r'"[0-9a-f]{7,40}"', sha)):
+        rep.error(f"{doc.rel}: distilled_from_sha はクォートした短縮 SHA にする")
+
+    if doc.rel in NO_DOC_CLASS:
+        if doc.doc_class is not None:
+            rep.error(f"{doc.rel}: この文書は doc_class を持たない規約")
+    else:
+        if doc.doc_class is None:
+            rep.error(f"{doc.rel}: doc_class がフロースタイル 1 行で書かれていない")
+        if doc.tags is None:
+            rep.error(f"{doc.rel}: tags がフロースタイル 1 行で書かれていない")
+        if doc.doc_class is not None and doc.doc_class != doc.tags:
+            rep.error(f"{doc.rel}: doc_class {doc.doc_class} と "
+                      f"tags {doc.tags} が一致しない")
+        if doc.doc_class is not None and len(set(doc.doc_class)) != len(doc.doc_class):
+            rep.error(f"{doc.rel}: doc_class にクラスの重複がある")
+    if not doc.sources:
+        rep.error(f"{doc.rel}: sources が空")
+
+
+def check_sources_exist(doc: Doc, root: Path, rep: Report) -> None:
+    for s in doc.sources:
+        if s != s.strip("./") and (s.startswith("./") or s.startswith("/")):
+            rep.error(f"{doc.rel}: sources はリポジトリルート相対の正規形で書く: {s}")
+            continue
+        target = root / s
+        if not target.exists():
+            rep.error(f"{doc.rel}: sources が実在しない: {s}")
+            continue
+        # 大文字小文字違いは macOS で通り Linux の CI だけが落ちる。
+        # 実在するディレクトリの一覧と突き合わせて手元で止める。
+        parent = target.parent
+        if target.name not in {p.name for p in parent.iterdir()}:
+            rep.error(f"{doc.rel}: sources の大文字小文字が実体と違う: {s}")
+
+
+def check_stale(doc: Doc, root: Path, rep: Report) -> None:
+    if not doc.fm:
+        return
+    sha = (scalar(doc.fm, "distilled_from_sha") or "").strip('"')
+    if not sha:
+        return
+    if git(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}").returncode != 0:
+        rep.error(f"{doc.rel}: distilled_from_sha {sha} が履歴に無い"
+                  "（rebase / shallow clone。比較できないことを『変更なし』と読まない）")
+        return
+    if git(root, "merge-base", "--is-ancestor", sha, "HEAD").returncode != 0:
+        rep.error(f"{doc.rel}: distilled_from_sha {sha} が HEAD から到達できない")
+        return
+    for s in doc.sources:
+        r = git(root, "log", "--format=%H", "-n", "1", f"{sha}..HEAD", "--", s)
+        if r.returncode != 0:
+            rep.error(f"{doc.rel}: stale 判定に失敗した（{s}）: {r.stderr.strip()}")
+            continue
+        if r.stdout.strip():
+            rep.error(f"{doc.rel}: STALE — {s} が {sha} より後に変更されている。"
+                      "本文を見直したうえで distilled_from_sha を進める")
+
+
+def check_links(rel: str, body: str, base: Path, root: Path, rep: Report) -> None:
+    for m in LINK_RE.finditer(for_detection(body)):
+        target = m.group(1).split("#", 1)[0].strip()
+        if not target or target.startswith(("http://", "https://", "mailto:")):
+            continue
+        if not (base / target).resolve().exists():
+            rep.error(f"{rel}: リンク先が実在しない: {target}")
+
+
+def check_registry(reg_text: str, docs: list[Doc], rep: Report
+                   ) -> tuple[dict[str, tuple[str, int]], set[str]]:
+    declared: dict[str, tuple[str, int]] = {}
+    na: set[str] = set()
+
+    block = extract_block(reg_text, "doc-classes")
+    if block is None:
+        rep.fatal("doc-classes.md: マーカー doc-classes が無い")
+    else:
+        for cells in table_rows(block, rep, "doc-classes.md クラス一覧"):
+            if len(cells) != 4:
+                rep.fatal(f"doc-classes.md: クラス一覧は 4 列固定: {cells}")
+                continue
+            cid, _name, state, cur = cells
+            if not re.fullmatch(r"D\d{2}", cid):
+                rep.fatal(f"doc-classes.md: クラス ID の形式: {cid}")
+                continue
+            if state not in ("active", "n/a"):
+                rep.error(f"doc-classes.md: {cid} の状態は active / n/a のみ: {state}")
+            if not cur.isdigit():
+                rep.fatal(f"doc-classes.md: {cid} の現行が数値でない: {cur}")
+                continue
+            declared[cid] = (state, int(cur))
+
+    na_block = extract_block(reg_text, "doc-classes-na")
+    if na_block is None:
+        rep.fatal("doc-classes.md: マーカー doc-classes-na が無い")
+    else:
+        for cells in table_rows(na_block, rep, "doc-classes.md N/A 宣言表"):
+            if len(cells) != 3:
+                rep.fatal(f"doc-classes.md: N/A 宣言表は 3 列固定: {cells}")
+                continue
+            cid, reason, resume = cells
+            if not reason or not resume:
+                rep.error(f"doc-classes.md: {cid} の N/A の理由 / 再開条件が空")
+            na.add(cid)
+
+    actual: dict[str, int] = {}
+    for d in docs:
+        for c in (d.doc_class or []):
+            actual[c] = actual.get(c, 0) + 1
+
+    for cid, (state, cur) in declared.items():
+        if actual.get(cid, 0) != cur:
+            rep.error(f"{cid}: 一覧の現行={cur} だが実態={actual.get(cid, 0)}")
+        if state == "n/a" and cid not in na:
+            rep.error(f"{cid}: n/a だが N/A 宣言表に行が無い")
+        if state == "active" and cid in na:
+            rep.error(f"{cid}: active だが N/A 宣言表に行がある")
+        if state == "active" and cur == 0:
+            rep.error(f"{cid}: active かつ 0 本（運用しないなら n/a で閉じる）")
+    for cid in na - set(declared):
+        rep.error(f"{cid}: N/A 宣言表にあるが一覧に無い")
+    for cid in set(actual) - set(declared):
+        rep.error(f"{cid}: 文書が宣言しているがクラス一覧に無い")
+    for cid in actual:
+        if declared.get(cid, ("", 0))[0] == "n/a":
+            rep.error(f"{cid}: n/a のクラスを doc_class に指定した文書がある")
+
+    idx_block = extract_block(reg_text, "doc-classes-index")
+    if idx_block is None:
+        rep.fatal("doc-classes.md: マーカー doc-classes-index が無い")
+    else:
+        idx: dict[str, list[str]] = {}
+        order: list[str] = []
+        for cells in table_rows(idx_block, rep, "doc-classes.md 割当索引"):
+            if len(cells) != 2:
+                rep.fatal(f"doc-classes.md: 割当索引は 2 列固定: {cells}")
+                continue
+            doc_path, classes = cells
+            if not (classes.startswith("[") and classes.endswith("]")):
+                rep.fatal(f"doc-classes.md: 割当索引の doc_class 表記: {classes}")
+                continue
+            idx[doc_path] = [x.strip() for x in classes[1:-1].split(",") if x.strip()]
+            order.append(doc_path)
+        if order != sorted(order):
+            rep.error("doc-classes.md: 割当索引の行がパス昇順でない")
+        expected = {d.rel: d.doc_class for d in docs if d.doc_class is not None}
+        for rel, dc in expected.items():
+            if rel not in idx:
+                rep.error(f"割当索引に欠落: {rel}")
+            elif idx[rel] != dc:
+                rep.error(f"割当索引の不一致 {rel}: {idx[rel]} != {dc}")
+        for rel in set(idx) - set(expected):
+            rep.error(f"割当索引に余剰の行: {rel}")
+
+    return declared, na
+
+
+def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> None:
+    seen: dict[str, str] = {}   # ID -> 文書。クラス内グローバルなので横断で集める
+    for doc in docs:
+        inside = ""
+        for m in re.finditer(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->",
+                             doc.detect, re.S):
+            cls, block = m.group(1), m.group(2)
+            inside += block
+            if doc.doc_class is None or cls not in doc.doc_class:
+                rep.error(f"{doc.rel}: REQ ブロック {cls} がこの文書の doc_class に無い")
+            lines = [l.strip() for l in block.splitlines() if l.strip().startswith("|")]
+            if not lines or lines[0] != REQ_HEADER:
+                rep.fatal(f"{doc.rel}: REQ 表の見出し行が規約と違う")
+                continue
+            # セルの中身は生テキストで見る。インラインコードを剥がすと
+            # `tests/...::test_x` も `TBD` もどちらも空になる。
+            raw_block = _matching_raw_block(doc.body, cls)
+            raw_lines = [l.strip() for l in raw_block.splitlines()
+                         if l.strip().startswith("|")] if raw_block else lines
+            for raw in raw_lines[2:]:
+                cells = split_row(raw)
+                if cells is None or len(cells) != 5:
+                    rep.fatal(f"{doc.rel}: REQ 表は 5 列固定: {raw[:50]}")
+                    continue
+                rid, req, how, src, st = cells
+                if not re.fullmatch(rf"REQ-{cls}-\d{{3}}", rid):
+                    rep.error(f"{doc.rel}: REQ-ID の形式かクラス部が違う: {rid}")
+                elif rid in seen:
+                    rep.error(f"REQ-ID の重複: {rid}（{seen[rid]} と {doc.rel}）")
+                else:
+                    seen[rid] = doc.rel
+                if not req:
+                    rep.error(f"{rid}: 要件が空")
+                if not src:
+                    rep.error(f"{rid}: 出典が空")
+                if st not in REQ_STATUS:
+                    rep.error(f"{rid}: status の値域外 {st!r}")
+                if st == "Confirmed" and how.strip().strip("`").lower() in EMPTY_MEANS:
+                    rep.error(f"{rid}: Confirmed なのに検証手段が空扱い（{how!r}）")
+                _check_req_source_in_sources(doc, rid, src, root, rep)
+
+        # inside は detect から集めているので、除外も detect 側で行う。
+        # body から引くと文字列が一致せず、表全体が「マーカー外」になる。
+        outside = doc.detect.replace(inside, "") if inside else doc.detect
+        if any(l.strip() == REQ_HEADER for l in outside.splitlines()):
+            rep.fatal(f"{doc.rel}: マーカーの外に REQ 表がある")
+
+
+def _matching_raw_block(body: str, cls: str) -> str | None:
+    m = re.search(rf"<!-- REQ:begin {cls} -->(.*?)<!-- REQ:end {cls} -->", body, re.S)
+    return m.group(1) if m else None
+
+
+def _check_req_source_in_sources(doc: Doc, rid: str, src: str,
+                                 root: Path, rep: Report) -> None:
+    """出典が一次資料を名指ししたら sources にも載っていること。
+
+    sources から行を消せば stale も消えるという抜け道の、最小限の封じ。
+    """
+    for m in LINK_RE.finditer(src):
+        target = m.group(1).split("#", 1)[0].strip()
+        if target.startswith(("http://", "https://")):
+            continue
+        resolved = (doc.path.parent / target).resolve()
+        try:
+            rel = resolved.relative_to(root.resolve())
+        except ValueError:
+            continue
+        if not str(rel).startswith(str(ORIGINAL_DOCS_DIR)):
+            continue
+        if str(rel) not in doc.sources:
+            rep.error(f"{rid}: 出典 {rel} が {doc.rel} の sources に無い")
+
+
+def check_decision_logs(docs: list[Doc], rep: Report) -> None:
+    for doc in docs:
+        if not DECISION_HEADING_RE.search(doc.detect):
+            continue
+        begins = doc.detect.count("<!-- decision-log:begin -->")
+        ends = doc.detect.count("<!-- decision-log:end -->")
+        if begins == 0 and ends == 0:
+            # マーカーを両方消しても検査が黙って消えないよう、見出しの側で捕まえる。
+            rep.fatal(f"{doc.rel}: マーカーの外に決定ログ見出しがある"
+                      "（decision-log マーカーで囲む）")
+            continue
+        if begins != 1 or ends != 1:
+            rep.fatal(f"{doc.rel}: decision-log マーカーが対で 1 組になっていない")
+            continue
+        before, rest = doc.detect.split("<!-- decision-log:begin -->", 1)
+        seg, after = rest.split("<!-- decision-log:end -->", 1)
+        if DECISION_HEADING_RE.search(before) or DECISION_HEADING_RE.search(after):
+            rep.fatal(f"{doc.rel}: マーカーの外に決定ログ見出しがある")
+        entries = DECISION_ENTRY_RE.findall(seg)
+        if not entries:
+            rep.error(f"{doc.rel}: 決定ログ節にエントリが無い")
+        ids = [e[0] for e in entries]
+        if len(ids) != len(set(ids)):
+            rep.error(f"{doc.rel}: 決定ログの見出し ID が重複: {ids}")
+        for _id, status in entries:
+            if status not in DECISION_STATUS and not status.startswith("Superseded"):
+                rep.error(f"{doc.rel}: 決定ログの status の値域外 {status!r}")
+        for heading in ANY_H3_RE.findall(seg):
+            if not re.match(r"#\d+-\d+: .+ — \S+$", heading):
+                rep.error(f"{doc.rel}: 決定ログ見出しの書式: ### {heading[:50]}")
+
+
+def check_layout(root: Path, rep: Report) -> None:
+    kdir = root / KNOWLEDGE_DIR
+    for p in kdir.rglob("*.md"):
+        if p.parent != kdir:
+            rep.error(f"{p.relative_to(root)}: knowledge のサブディレクトリに .md を置かない"
+                      "（1 階層下げるだけで無検査域になる）")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--root", default=".", help="リポジトリルート（既定: .）")
+    ap.add_argument("--warn-only", action="store_true",
+                    help="違反を警告扱いにして 0 で終わる（検査不成立は抑止しない）")
+    ap.add_argument("--no-stale", action="store_true",
+                    help="stale 検査を省く（git の無い環境向け）")
+    args = ap.parse_args(argv)
+
+    root = Path(args.root).resolve()
+    rep = Report()
+
+    kdir = root / KNOWLEDGE_DIR
+    if not kdir.is_dir():
+        rep.fatal(f"{KNOWLEDGE_DIR} が無い")
+        return _report(rep, args.warn_only)
+
+    check_layout(root, rep)
+    docs = [Doc(p, root) for p in sorted(kdir.glob("*.md"))]
+    if not docs:
+        rep.fatal("検査対象の文書が 0 件（違反が無いのではなく、検査が成立していない）")
+        return _report(rep, args.warn_only)
+
+    for doc in docs:
+        check_frontmatter(doc, rep)
+        check_sources_exist(doc, root, rep)
+        check_links(doc.rel, doc.body, doc.path.parent, root, rep)
+        if not args.no_stale:
+            check_stale(doc, root, rep)
+
+    reg = root / REGISTRY
+    if not reg.exists():
+        rep.fatal(f"{REGISTRY} が無い（クラス定義の正本）")
+    else:
+        check_registry(strip_fences(reg.read_text(encoding="utf-8")), docs, rep)
+
+    check_req_tables(docs, root, rep)
+    check_decision_logs(docs, rep)
+
+    for extra in EXTRA_LINK_TARGETS:
+        p = root / extra
+        if p.exists():
+            check_links(str(extra), strip_fences(p.read_text(encoding="utf-8")),
+                        root, root, rep)
+
+    return _report(rep, args.warn_only)
+
+
+def _report(rep: Report, warn_only: bool) -> int:
+    for m in rep.warnings:
+        print(f"warning: {m}")
+    for m in rep.errors:
+        print(f"{'warning' if warn_only else 'error'}: {m}")
+    for m in rep.fatals:
+        # 検査が成立していない。--warn-only でも抑止しない。
+        print(f"error: {m}")
+
+    if rep.fatals:
+        print(f"\n検査が成立していない: {len(rep.fatals)} 件")
+        return 1
+    if rep.errors and not warn_only:
+        print(f"\n違反: {len(rep.errors)} 件")
+        return 1
+    if rep.errors:
+        print(f"\n違反 {len(rep.errors)} 件（--warn-only のため 0 で終了）")
+        return 0
+    print("OK: 違反なし")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
