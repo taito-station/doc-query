@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
-distilled_from_sha: "7681fc1"
+distilled_from_sha: "3e83512"
 updated: "2026-08-24"
 ---
 
