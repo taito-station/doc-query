@@ -43,8 +43,10 @@ pre-push の導入は `sh scripts/install-git-hooks.sh`（`core.hooksPath` を�
 
 具体的には次を「違反」ではなく**「検査が成立していない」**として扱い、`--warn-only` でも抑止しない。
 
-- マーカーの欠落。**6 種類**（`doc-classes` / `doc-classes-na` / `doc-classes-index` /
-  `req-index` / `REQ` / `decision-log`）。正本は [README.md](README.md) の「何が機械検査されるか」
+- マーカーの欠落。**7 種類**（`doc-classes` / `doc-classes-na` / `doc-classes-index` /
+  `req-index` / `req-counts` / `REQ` / `decision-log`）。正本は [README.md](README.md) の
+  「何が機械検査されるか」
+- 1 組しか置けないマーカーの**二重化**（抽出は最初の対しか見ないので、2 組目が無検査域になる）
 - 検査対象の文書が 0 件
 - 入口の `CLAUDE.md` / `README.md` が無い（リンク検査が黙って 0 件になる）
 - append-only 検査で、base にも HEAD にも `docs/knowledge/` の `.md` が無い（初回導入と区別が付かない）
@@ -88,8 +90,13 @@ shallow clone では判定できず warning に退化する——これも fail-
 経路があり、そちらだけが壊れる変更を検出できるようにする。
 
 **append-only 検査の比較基準はイベントで変える。** `pull_request` では `origin/<base_ref>`、
-`push` では `HEAD^`。push で `origin/main` を渡すと `merge-base(origin/main, HEAD)` が HEAD 自身に
-なり、**自分と自分を比べて必ず通る**——検査が走っているように見えて何も見ていない。
+`push` では `github.event.before`（push 前のブランチ先端）。push で `origin/main` を渡すと
+`merge-base(origin/main, HEAD)` が HEAD 自身になり、**自分と自分を比べて必ず通る**——検査が
+走っているように見えて何も見ていない。`HEAD^` も駄目で、複数コミットを一度に push したときに
+最後の 1 つしか見ない。`before` が空・全 0（新規ブランチ / force push）なら **error にする**。
+
+**`run:` へ context（`github.*`）を直接展開しない。** ref 名を通じたコマンド注入の面が残るので、
+`env:` に受けてから参照する。
 
 ## 意図的に入れないもの
 
