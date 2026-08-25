@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
-distilled_from_sha: "3e83512"
+distilled_from_sha: "29b7c11"
 updated: "2026-08-25"
 ---
 
@@ -258,5 +258,8 @@ fatal にすることで塞いだ。
   site-packages 込みなので「標準ライブラリのみ」の証明になっていなかった
 - pre-push の依存判定を「どの python でその依存を import できるか」に統一し、`.venv` の有無で
   分岐しない
+- **`Report` の warning 系統を削る。** `#1-2` は error / warning / fatal の 3 系統と書いたが、
+  warning は produce 側が一度も書かれず dead code のままだった。`#1-2` の核（fatal を
+  `--warn-only` でも抑止しない）は変わらない。**必要になったら最初の利用箇所と一緒に戻す**
 
 <!-- decision-log:end -->
