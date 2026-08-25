@@ -311,7 +311,13 @@ def test_doc_status_out_of_range() -> None:
 
 def test_updated_not_quoted() -> None:
     def mutate(root: Path) -> None:
-        edit(root / K / "glossary.md", 'updated: "2026-08-24"', "updated: 2026-08-24")
+        # 日付を書き固めない。文書を更新するたびにテストだけが落ちる。
+        p = root / K / "glossary.md"
+        m = re.search(r'^updated: "(\d{4}-\d{2}-\d{2})"$',
+                      p.read_text(encoding="utf-8"), re.M)
+        if m is None:
+            raise AssertionError("前提が崩れている: glossary.md に updated が無い")
+        edit(p, m.group(0), f"updated: {m.group(1)}")
     case("updated がクォートされていない", mutate, "クォートした YYYY-MM-DD",
          warn_only_rc=0)
 
