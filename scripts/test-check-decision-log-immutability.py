@@ -43,7 +43,11 @@ updated: "2026-08-24"
 
 #### コンテキスト
 
-もとの本文。
+もとの本文。`alpha` を使う。
+
+```sh
+echo OLD
+```
 
 ### #1-2: 二つ目の決定 (2026-08-24) — 採用
 
@@ -57,8 +61,16 @@ results: list[tuple[bool, str, str]] = []
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args],
-                          capture_output=True, text=True)
+    """git を実行する。
+
+    終了コードを見ないと、コミットに失敗したまま「PASS」になる経路が
+    残る——テストの前提が崩れたことを、検査が通ったことと取り違える。
+    """
+    r = subprocess.run(["git", "-C", str(root), *args],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)} が失敗: {r.stderr.strip()}")
+    return r
 
 
 def build(tmp: Path) -> Path:
@@ -179,6 +191,106 @@ def test_missing_base_is_rejected() -> None:
             capture_output=True, text=True)
         ok = r.returncode == 1
         results.append((ok, "存在しない基準を渡したら弾く",
+                        "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))
+
+
+def test_fence_body_edit_is_rejected() -> None:
+    """フェンスの中身も本文。正規化した文字列で比べると書き換え放題になる。"""
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        p.write_text(p.read_text(encoding="utf-8").replace("echo OLD", "echo NEW"),
+                     encoding="utf-8")
+    case("フェンス内の書き換えを弾く", mutate, 1, "改変されている")
+
+
+def test_inline_code_edit_is_rejected() -> None:
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        p.write_text(p.read_text(encoding="utf-8").replace("`alpha`", "`beta`"),
+                     encoding="utf-8")
+    case("インラインコードの書き換えを弾く", mutate, 1, "改変されている")
+
+
+def test_preamble_edit_is_rejected() -> None:
+    """最初のエントリより前（見出しと注記）も比較対象に含める。"""
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        p.write_text(p.read_text(encoding="utf-8").replace(
+            "<!-- この節は append-only です。 -->", ""), encoding="utf-8")
+    case("節の前書きの書き換えを弾く", mutate, 1, "改変されている")
+
+
+def test_reordering_is_rejected() -> None:
+    """既存エントリの入れ替えは追記ではない。"""
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        t = p.read_text(encoding="utf-8")
+        i, j = t.index("### #1-1:"), t.index("### #1-2:")
+        k = t.index("<!-- decision-log:end -->")
+        p.write_text(t[:i] + t[j:k] + t[i:j] + t[k:], encoding="utf-8")
+    case("既存エントリの入れ替えを弾く", mutate, 1, "順序が変わっている")
+
+
+def test_insertion_between_entries_is_rejected() -> None:
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        t = p.read_text(encoding="utf-8")
+        p.write_text(t.replace(
+            "### #1-2:",
+            "### #1-3: 割り込み (2026-08-24) — 採用\n\n#### コンテキスト\n\n割り込み。\n\n"
+            "### #1-2:"), encoding="utf-8")
+    case("既存の間への挿入を弾く", mutate, 1, "順序が変わっている")
+
+
+def test_uncommitted_edit_is_not_judged() -> None:
+    """比較はコミット同士。手元の未コミット状態を判定に混ぜない。"""
+    with tempfile.TemporaryDirectory() as td:
+        root = build(Path(td))
+        p = doc(root)
+        p.write_text(p.read_text(encoding="utf-8").replace("もとの本文。", "書き換えた。"),
+                     encoding="utf-8")   # コミットしない
+        r = run(root)
+        ok = r.returncode == 0
+        results.append((ok, "未コミットの改変は判定に混ぜない",
+                        "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))
+
+
+def test_target_dir_absent_on_both_sides_is_rejected() -> None:
+    """base にも HEAD にも対象が無いのを「初回導入」と読まない。"""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "repo"
+        root.mkdir()
+        (root / "README.md").write_text("# x\n", encoding="utf-8")
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "base")
+        r = run(root)
+        ok = r.returncode == 1 and "検査が成立していない" in r.stdout
+        results.append((ok, "base にも HEAD にも対象が無ければ弾く",
+                        "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))
+
+
+def test_first_introduction_passes() -> None:
+    """base に無く HEAD にはある＝本当の初回導入は通す。"""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "repo"
+        root.mkdir()
+        (root / "README.md").write_text("# x\n", encoding="utf-8")
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.email", "t@example.com")
+        git(root, "config", "user.name", "t")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "base")
+        git(root, "checkout", "-q", "-b", "work")
+        (root / "docs" / "knowledge").mkdir(parents=True)
+        (root / "docs" / "knowledge" / "sample.md").write_text(DOC, encoding="utf-8")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "introduce")
+        r = run(root)
+        ok = r.returncode == 0 and "初回導入" in r.stdout
+        results.append((ok, "本当の初回導入は通る",
                         "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))
 
 

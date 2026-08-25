@@ -9,7 +9,7 @@
 frontmatter の doc_class / tags はフロースタイル 1 行に強制している。
 
 終了コード:
-  0  違反なし（warning はあってもよい）
+  0  違反なし
   1  違反あり、または検査が成立しなかった
 
 --warn-only はローカルで全件を眺めるための確認用。違反を警告扱いにして 0 で
@@ -19,13 +19,19 @@ frontmatter の doc_class / tags はフロースタイル 1 行に強制して�
 from __future__ import annotations
 
 import argparse
+import posixpath
 import re
+import stat as statmod
 import subprocess
 import sys
 from pathlib import Path
 
 KNOWLEDGE_DIR = Path("docs/knowledge")
 ORIGINAL_DOCS_DIR = Path("docs/original-docs")
+QA_DIR = Path("docs/qa")
+# 一次資料として扱う場所。2 層モデルでは original-docs と qa の両方が
+# 一次資料側なので、片方だけを見ると sources の抜け道が残る。
+PRIMARY_DIRS = (ORIGINAL_DOCS_DIR, QA_DIR)
 REGISTRY = KNOWLEDGE_DIR / "doc-classes.md"
 CONVENTION = KNOWLEDGE_DIR / "README.md"
 # 本文リンクの検査だけはリポジトリルートの 2 本にも及ぶ。文書の改名で
@@ -49,13 +55,21 @@ EMPTY_MEANS = {"", "-", "–", "—", "tbd", "unknown", "n/a",
 FENCE_RE = re.compile(r"^```.*?^```", re.S | re.M)
 INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+# `](path "title")` のタイトルはパスの一部ではない。付けたまま実在を見ると
+# 必ず「リンク先が実在しない」になる。
+LINK_TITLE_RE = re.compile(r'\s+"[^"]*"$')
 DECISION_HEADING_RE = re.compile(r"^## 決定ログ$", re.M)
-DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ — (\S+)$", re.M)
+# status は `Superseded by #1-3` のように空白を含む。単一トークンで受けると
+# 規約が前提にしている表記が「書式違反」になり、Superseded の許可分岐にも
+# 到達しない。
+DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ — (\S.*)$", re.M)
+DECISION_HEADING_FORMAT_RE = re.compile(r"#\d+-\d+: .+ — \S.*$")
 ANY_H3_RE = re.compile(r"^### (.*)$", re.M)
+REQ_BLOCK_RE = re.compile(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->", re.S)
 
 
 class Report:
-    """error / warning / fatal を集める。
+    """error / fatal を集める。
 
     fatal は「検査が成立していない」——違反の不在を主張できない状態で、
     --warn-only でも抑止しない。
@@ -63,17 +77,61 @@ class Report:
 
     def __init__(self) -> None:
         self.errors: list[str] = []
-        self.warnings: list[str] = []
         self.fatals: list[str] = []
 
     def error(self, msg: str) -> None:
         self.errors.append(msg)
 
-    def warn(self, msg: str) -> None:
-        self.warnings.append(msg)
-
     def fatal(self, msg: str) -> None:
         self.fatals.append(msg)
+
+
+# --------------------------------------------------------------------------
+# ファイルの実在判定
+#
+# Path.exists() / is_dir() / is_file() は PermissionError を送出して検査を
+# 中断させ、os.path.exists() は逆に例外を握り潰して False を返す。どちらも
+# 「無い」と「判定できない」を混ぜるので、三値で返して後者は fatal にする。
+# --------------------------------------------------------------------------
+
+FOUND, MISSING, UNKNOWN = "found", "missing", "unknown"
+
+
+def probe(p: Path, rep: Report, where: str) -> str:
+    """実在を FOUND / MISSING / UNKNOWN で返す。UNKNOWN は fatal も積む。"""
+    try:
+        p.stat()
+    except FileNotFoundError:
+        return MISSING
+    except NotADirectoryError:
+        # 途中の要素がファイル。「無い」と同じに扱ってよい。
+        return MISSING
+    except OSError as e:
+        rep.fatal(f"{where}: 実在を判定できない: {p} ({e})")
+        return UNKNOWN
+    return FOUND
+
+
+def probe_dir(p: Path, rep: Report, where: str) -> str:
+    try:
+        st = p.stat()
+    except FileNotFoundError:
+        return MISSING
+    except NotADirectoryError:
+        return MISSING
+    except OSError as e:
+        rep.fatal(f"{where}: 実在を判定できない: {p} ({e})")
+        return UNKNOWN
+    return FOUND if statmod.S_ISDIR(st.st_mode) else MISSING
+
+
+def listdir(p: Path, rep: Report, where: str) -> set[str] | None:
+    """ディレクトリの名前一覧。読めなければ fatal を積んで None。"""
+    try:
+        return {c.name for c in p.iterdir()}
+    except OSError as e:
+        rep.fatal(f"{where}: ディレクトリを読めない: {p} ({e})")
+        return None
 
 
 def strip_fences(text: str) -> str:
@@ -115,8 +173,10 @@ def split_row(line: str) -> list[str] | None:
 
 
 def is_separator(line: str) -> bool:
+    # GFM はハイフン 1 本の `|-|` や `|:-:|` も区切り行として認める。
+    # 3 本以上を強いると、正当な表が「区切り行でない」で fatal になる。
     cells = split_row(line)
-    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", c) for c in cells)
+    return bool(cells) and all(re.fullmatch(r":?-+:?", c) for c in cells)
 
 
 def table_rows(block: str, rep: Report, where: str) -> list[list[str]]:
@@ -239,18 +299,36 @@ def check_frontmatter(doc: Doc, rep: Report) -> None:
 
 def check_sources_exist(doc: Doc, root: Path, rep: Report) -> None:
     for s in doc.sources:
-        if s != s.strip("./") and (s.startswith("./") or s.startswith("/")):
+        # 正規形そのものと突き合わせる。`./` `/` の前方一致だけを見ると
+        # `../` や途中の `./` が素通りする。
+        if s.startswith("/") or s.startswith("../") or s != posixpath.normpath(s):
             rep.error(f"{doc.rel}: sources はリポジトリルート相対の正規形で書く: {s}")
             continue
         target = root / s
-        if not target.exists():
+        state = probe(target, rep, doc.rel)
+        if state == UNKNOWN:
+            continue
+        if state == MISSING:
             rep.error(f"{doc.rel}: sources が実在しない: {s}")
             continue
-        # 大文字小文字違いは macOS で通り Linux の CI だけが落ちる。
-        # 実在するディレクトリの一覧と突き合わせて手元で止める。
-        parent = target.parent
-        if target.name not in {p.name for p in parent.iterdir()}:
-            rep.error(f"{doc.rel}: sources の大文字小文字が実体と違う: {s}")
+        check_case_exact(root, s, rep, f"{doc.rel}: sources")
+
+
+def check_case_exact(root: Path, rel: str, rep: Report, where: str) -> None:
+    """パスの各要素が実体と大文字小文字まで一致するか。
+
+    macOS は大小を区別しないので、最終要素だけ見ると親ディレクトリ側の
+    違いが手元を通り、Linux の CI だけが落ちる。
+    """
+    cur = root
+    for part in Path(rel).parts:
+        names = listdir(cur, rep, where)
+        if names is None:
+            return
+        if part not in names:
+            rep.error(f"{where} の大文字小文字が実体と違う: {rel}")
+            return
+        cur = cur / part
 
 
 def check_stale(doc: Doc, root: Path, rep: Report) -> None:
@@ -276,17 +354,21 @@ def check_stale(doc: Doc, root: Path, rep: Report) -> None:
                       "本文を見直したうえで distilled_from_sha を進める")
 
 
-def check_links(rel: str, body: str, base: Path, root: Path, rep: Report) -> None:
+def link_target(raw: str) -> str:
+    """`path#frag "title"` からパス部分だけを取り出す。"""
+    return LINK_TITLE_RE.sub("", raw.strip()).split("#", 1)[0].strip()
+
+
+def check_links(rel: str, body: str, base: Path, rep: Report) -> None:
     for m in LINK_RE.finditer(for_detection(body)):
-        target = m.group(1).split("#", 1)[0].strip()
+        target = link_target(m.group(1))
         if not target or target.startswith(("http://", "https://", "mailto:")):
             continue
-        if not (base / target).resolve().exists():
+        if probe((base / target).resolve(), rep, rel) == MISSING:
             rep.error(f"{rel}: リンク先が実在しない: {target}")
 
 
-def check_registry(reg_text: str, docs: list[Doc], rep: Report
-                   ) -> tuple[dict[str, tuple[str, int]], set[str]]:
+def check_registry(reg_text: str, docs: list[Doc], rep: Report) -> None:
     declared: dict[str, tuple[str, int]] = {}
     na: set[str] = set()
 
@@ -371,17 +453,17 @@ def check_registry(reg_text: str, docs: list[Doc], rep: Report
         for rel in set(idx) - set(expected):
             rep.error(f"割当索引に余剰の行: {rel}")
 
-    return declared, na
 
-
-def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> None:
+def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> set[tuple[str, str]]:
+    """REQ 表を検査し、実在する (クラス, 文書) の組を返す。"""
     seen: dict[str, str] = {}   # ID -> 文書。クラス内グローバルなので横断で集める
+    found: set[tuple[str, str]] = set()
     for doc in docs:
-        inside = ""
-        for m in re.finditer(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->",
-                             doc.detect, re.S):
+        spans: list[tuple[int, int]] = []
+        for m in REQ_BLOCK_RE.finditer(doc.detect):
             cls, block = m.group(1), m.group(2)
-            inside += block
+            spans.append(m.span())
+            found.add((cls, doc.rel))
             if doc.doc_class is None or cls not in doc.doc_class:
                 rep.error(f"{doc.rel}: REQ ブロック {cls} がこの文書の doc_class に無い")
             lines = [l.strip() for l in block.splitlines() if l.strip().startswith("|")]
@@ -415,11 +497,15 @@ def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> None:
                     rep.error(f"{rid}: Confirmed なのに検証手段が空扱い（{how!r}）")
                 _check_req_source_in_sources(doc, rid, src, root, rep)
 
-        # inside は detect から集めているので、除外も detect 側で行う。
-        # body から引くと文字列が一致せず、表全体が「マーカー外」になる。
-        outside = doc.detect.replace(inside, "") if inside else doc.detect
+        # マーカー内を「連結した文字列の replace」で消すと、ブロックが 2 つ
+        # 以上ある文書では連続部分文字列にならず空振りし、正常な表が
+        # 「マーカー外」で fatal になる。位置で、後ろから削る。
+        outside = doc.detect
+        for a, b in reversed(spans):
+            outside = outside[:a] + outside[b:]
         if any(l.strip() == REQ_HEADER for l in outside.splitlines()):
             rep.fatal(f"{doc.rel}: マーカーの外に REQ 表がある")
+    return found
 
 
 def _matching_raw_block(body: str, cls: str) -> str | None:
@@ -432,9 +518,11 @@ def _check_req_source_in_sources(doc: Doc, rid: str, src: str,
     """出典が一次資料を名指ししたら sources にも載っていること。
 
     sources から行を消せば stale も消えるという抜け道の、最小限の封じ。
+    一次資料は original-docs だけでなく qa も含む——片方だけを見ると、
+    質問票を出典にした REQ で同じ抜け道が開いたままになる。
     """
     for m in LINK_RE.finditer(src):
-        target = m.group(1).split("#", 1)[0].strip()
+        target = link_target(m.group(1))
         if target.startswith(("http://", "https://")):
             continue
         resolved = (doc.path.parent / target).resolve()
@@ -442,7 +530,7 @@ def _check_req_source_in_sources(doc: Doc, rid: str, src: str,
             rel = resolved.relative_to(root.resolve())
         except ValueError:
             continue
-        if not str(rel).startswith(str(ORIGINAL_DOCS_DIR)):
+        if not any(str(rel).startswith(str(d)) for d in PRIMARY_DIRS):
             continue
         if str(rel) not in doc.sources:
             rep.error(f"{rid}: 出典 {rel} が {doc.rel} の sources に無い")
@@ -450,10 +538,16 @@ def _check_req_source_in_sources(doc: Doc, rid: str, src: str,
 
 def check_decision_logs(docs: list[Doc], rep: Report) -> None:
     for doc in docs:
-        if not DECISION_HEADING_RE.search(doc.detect):
-            continue
         begins = doc.detect.count("<!-- decision-log:begin -->")
         ends = doc.detect.count("<!-- decision-log:end -->")
+        if not DECISION_HEADING_RE.search(doc.detect):
+            if begins == 0 and ends == 0:
+                continue
+            # 見出しの側からしか入らないと、見出しを 1 行消すだけで
+            # マーカー内の検査（書式・ID 重複・status）が全部消える。
+            rep.fatal(f"{doc.rel}: decision-log マーカーがあるのに "
+                      "`## 決定ログ` 見出しが無い")
+            continue
         if begins == 0 and ends == 0:
             # マーカーを両方消しても検査が黙って消えないよう、見出しの側で捕まえる。
             rep.fatal(f"{doc.rel}: マーカーの外に決定ログ見出しがある"
@@ -476,8 +570,41 @@ def check_decision_logs(docs: list[Doc], rep: Report) -> None:
             if status not in DECISION_STATUS and not status.startswith("Superseded"):
                 rep.error(f"{doc.rel}: 決定ログの status の値域外 {status!r}")
         for heading in ANY_H3_RE.findall(seg):
-            if not re.match(r"#\d+-\d+: .+ — \S+$", heading):
+            if not DECISION_HEADING_FORMAT_RE.match(heading):
                 rep.error(f"{doc.rel}: 決定ログ見出しの書式: ### {heading[:50]}")
+
+
+def check_req_index(conv_text: str, found: set[tuple[str, str]], rep: Report) -> None:
+    """README の「REQ 表のある文書（索引）」を、実在する REQ マーカーと突合する。
+
+    索引が手書きのままだと、REQ 表を足しても索引が更新されない。番号空間は
+    クラス内グローバルなので、索引の欠落はそのまま採番の重複を招く。
+    """
+    where = "knowledge/README.md REQ 索引"
+    block = extract_block(conv_text, "req-index")
+    if block is None:
+        rep.fatal("knowledge/README.md: マーカー req-index が無い")
+        return
+    listed: set[tuple[str, str]] = set()
+    for cells in table_rows(block, rep, where):
+        if len(cells) != 3:
+            rep.fatal(f"{where}: 3 列固定: {cells}")
+            continue
+        cid, doc_cell, scope = cells
+        if not re.fullmatch(r"D\d{2}", cid):
+            rep.fatal(f"{where}: クラス ID の形式: {cid}")
+            continue
+        m = LINK_RE.search(doc_cell)
+        if m is None:
+            rep.fatal(f"{where}: 文書欄はリンクで書く: {doc_cell}")
+            continue
+        if not scope:
+            rep.error(f"{where}: {cid} の範囲が空")
+        listed.add((cid, f"knowledge/{link_target(m.group(1))}"))
+    for cid, rel in sorted(found - listed):
+        rep.error(f"REQ 索引に欠落: {rel} の {cid}")
+    for cid, rel in sorted(listed - found):
+        rep.error(f"REQ 索引に余剰の行: {rel} の {cid}")
 
 
 def check_layout(root: Path, rep: Report) -> None:
@@ -501,7 +628,7 @@ def main(argv: list[str] | None = None) -> int:
     rep = Report()
 
     kdir = root / KNOWLEDGE_DIR
-    if not kdir.is_dir():
+    if probe_dir(kdir, rep, str(KNOWLEDGE_DIR)) != FOUND:
         rep.fatal(f"{KNOWLEDGE_DIR} が無い")
         return _report(rep, args.warn_only)
 
@@ -514,31 +641,40 @@ def main(argv: list[str] | None = None) -> int:
     for doc in docs:
         check_frontmatter(doc, rep)
         check_sources_exist(doc, root, rep)
-        check_links(doc.rel, doc.body, doc.path.parent, root, rep)
+        check_links(doc.rel, doc.body, doc.path.parent, rep)
         if not args.no_stale:
             check_stale(doc, root, rep)
 
     reg = root / REGISTRY
-    if not reg.exists():
+    if probe(reg, rep, str(REGISTRY)) == MISSING:
         rep.fatal(f"{REGISTRY} が無い（クラス定義の正本）")
     else:
         check_registry(strip_fences(reg.read_text(encoding="utf-8")), docs, rep)
 
-    check_req_tables(docs, root, rep)
+    req_found = check_req_tables(docs, root, rep)
     check_decision_logs(docs, rep)
+
+    conv = root / CONVENTION
+    if probe(conv, rep, str(CONVENTION)) == MISSING:
+        rep.fatal(f"{CONVENTION} が無い（規約の正本）")
+    else:
+        check_req_index(strip_fences(conv.read_text(encoding="utf-8")), req_found, rep)
 
     for extra in EXTRA_LINK_TARGETS:
         p = root / extra
-        if p.exists():
+        state = probe(p, rep, str(extra))
+        if state == MISSING:
+            # 無いことを「検査するものが無い」と読むと、入口の改名で
+            # リンク検査が黙って 0 件になる。
+            rep.fatal(f"{extra} が無い（入口リンクの検査が成立しない）")
+        elif state == FOUND:
             check_links(str(extra), strip_fences(p.read_text(encoding="utf-8")),
-                        root, root, rep)
+                        root, rep)
 
     return _report(rep, args.warn_only)
 
 
 def _report(rep: Report, warn_only: bool) -> int:
-    for m in rep.warnings:
-        print(f"warning: {m}")
     for m in rep.errors:
         print(f"{'warning' if warn_only else 'error'}: {m}")
     for m in rep.fatals:

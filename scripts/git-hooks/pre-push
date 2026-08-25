@@ -14,13 +14,24 @@ set -e
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
 
+# 依存の有無は「どの python でその依存を import できるか」で決める。
+# .venv の存在だけで分岐すると、.venv はあるが当該モジュールが無い環境で
+# 理由不明に落ちたり、逆に理由を取り違えた skip 表示になったりする。
+py_with() {
+    for py in .venv/bin/python python3; do
+        if "$py" -c "import $1" >/dev/null 2>&1; then
+            echo "$py"
+            return 0
+        fi
+    done
+    return 1
+}
+
 echo "==> pytest"
-if [ -x .venv/bin/python ]; then
-    .venv/bin/python -m pytest tests -q
-elif python3 -c "import pytest" 2>/dev/null; then
-    python3 -m pytest tests -q
+if PY=$(py_with pytest); then
+    "$PY" -m pytest tests -q
 else
-    echo "    skip: pytest が無い（CI が担保する）"
+    echo "    skip: pytest を import できる python が無い（CI が担保する）"
 fi
 
 # 出力を捨てると失敗の理由が分からなくなる。成功時だけ要約に畳む。
@@ -40,6 +51,7 @@ if command -v python3 >/dev/null 2>&1; then
     echo "==> 検査スクリプト自身の回帰テスト"
     quiet_run python3 scripts/test-check-doc-classes.py
     quiet_run python3 scripts/test-check-decision-log-immutability.py
+    quiet_run python3 scripts/test-check-no-pdf-committed.py
 
     echo "==> 文書の機械検査"
     python3 scripts/check-doc-classes.py
@@ -50,13 +62,17 @@ else
 fi
 
 # 評価計測は reportlab（合成コーパスの生成）に依存するので、判定を分ける。
-if [ -x .venv/bin/python ] && .venv/bin/python -c "import reportlab" 2>/dev/null; then
+if PY=$(py_with reportlab); then
     if [ -f scripts/eval-golden.py ]; then
         echo "==> ゴールデンクエリの回帰計測"
-        .venv/bin/python scripts/eval-golden.py --set dev --check-baseline
+        "$PY" scripts/eval-golden.py --set dev --check-baseline
+    else
+        # 飛ばしたことを黙らせない。スクリプトの改名・削除で計測が消えても
+        # 気づけなくなる。
+        echo "==> 評価計測 skip: scripts/eval-golden.py が無い"
     fi
 else
-    echo "==> 評価計測 skip: reportlab が無い（CI が担保する）"
+    echo "==> 評価計測 skip: reportlab を import できる python が無い（CI が担保する）"
 fi
 
 echo "==> OK"

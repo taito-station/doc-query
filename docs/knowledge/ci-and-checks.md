@@ -9,7 +9,7 @@ sources:
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
 distilled_from_sha: "3e83512"
-updated: "2026-08-24"
+updated: "2026-08-25"
 ---
 
 # CI と機械検査
@@ -20,7 +20,10 @@ updated: "2026-08-24"
 と pre-push（`scripts/git-hooks/pre-push`）が同じスクリプトを同じ順序で呼ぶ。
 
 pre-push の導入は `sh scripts/install-git-hooks.sh`（`core.hooksPath` を張るので、フックの更新は
-自動で反映される）。
+自動で反映される）。**引き換えに、作業ツリーにあるスクリプトが push のたびに実行される。**
+信頼できないブランチ（fork からの PR 等）を checkout した状態で push すると、そのブランチ版の
+フックが動く——checkout する前に diff を見る。`core.hooksPath` を張ると `.git/hooks/` 配下の
+既存フックは呼ばれなくなるので、導入スクリプトは上書き前に警告を出す。
 
 ## 何を機械で守るか
 
@@ -40,9 +43,11 @@ pre-push の導入は `sh scripts/install-git-hooks.sh`（`core.hooksPath` を�
 
 具体的には次を「違反」ではなく**「検査が成立していない」**として扱い、`--warn-only` でも抑止しない。
 
-- マーカーの欠落。**5 種類**（`doc-classes` / `doc-classes-na` / `doc-classes-index` / `REQ` /
-  `decision-log`）。正本は [README.md](README.md) の「何が機械検査されるか」
+- マーカーの欠落。**6 種類**（`doc-classes` / `doc-classes-na` / `doc-classes-index` /
+  `req-index` / `REQ` / `decision-log`）。正本は [README.md](README.md) の「何が機械検査されるか」
 - 検査対象の文書が 0 件
+- 入口の `CLAUDE.md` / `README.md` が無い（リンク検査が黙って 0 件になる）
+- append-only 検査で、base にも HEAD にも `docs/knowledge/` の `.md` が無い（初回導入と区別が付かない）
 - 表の書式が崩れた行（黙って落とすと、そのクラスが「未定義」になって参照側が全部 error になり、
   原因が読めなくなる）
 
@@ -69,7 +74,7 @@ CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。
 | ジョブ | 内容 |
 |---|---|
 | `test` | Python 3.10（`[dev]` のみ＝**tiktoken 無しのフォールバック経路**）と 3.13（`[tokens,dev]`）の 2 通りで `pytest` |
-| `docs` | 検査スクリプトの回帰テスト → 本番検査 → 実物文書の混入検査 |
+| `docs` | 検査スクリプト 3 本の回帰テスト → 本番検査 → 実物文書の混入検査 |
 | `eval` | ゴールデンクエリの回帰計測（[search-quality-evaluation.md](search-quality-evaluation.md)） |
 
 **`docs` ジョブは全履歴を取得する必要がある。** stale 検査が `git log` と `merge-base` を使うので、
@@ -77,6 +82,10 @@ shallow clone では判定できず warning に退化する——これも fail-
 
 **`test` を 2 通りで回すのは、`tiktoken` が optional だから。** 未導入時は文字数からの近似に落ちる
 経路があり、そちらだけが壊れる変更を検出できるようにする。
+
+**append-only 検査の比較基準はイベントで変える。** `pull_request` では `origin/<base_ref>`、
+`push` では `HEAD^`。push で `origin/main` を渡すと `merge-base(origin/main, HEAD)` が HEAD 自身に
+なり、**自分と自分を比べて必ず通る**——検査が走っているように見えて何も見ていない。
 
 ## 意図的に入れないもの
 
@@ -97,7 +106,7 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
 | REQ-D21-001 | 文書規約の機械検査は GitHub Actions と pre-push の両方で、同じスクリプトを同じ順序で走らせる | `.github/workflows/ci.yml` の `docs` ジョブ / `scripts/git-hooks/pre-push` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-002 | 検査自身の回帰テストを本番検査より先に走らせる。判定器の健全性を、本番検査が落ちる前に確かめる | `.github/workflows/ci.yml` の `docs` ジョブのステップ順 / `scripts/test-check-doc-classes.py` / `scripts/test-check-decision-log-immutability.py` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-003 | マーカーの欠落・検査対象 0 件・表の書式崩れは「違反」ではなく「検査が成立していない」として扱い、`--warn-only` でも抑止しない | `scripts/test-check-doc-classes.py::test_no_targets` / `::test_marker_missing` / `::test_broken_table_row`（いずれも `--warn-only` で rc=1 を検証） | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
-| REQ-D21-004 | 検査スクリプトは標準ライブラリのみで動く。`python3` があれば実行できる性質を保つ | `scripts/test-check-doc-classes.py`（venv を使わず `sys.executable` で実行） | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
+| REQ-D21-004 | 検査スクリプトは標準ライブラリのみで動く。`python3` があれば実行できる性質を保つ | `scripts/test-check-doc-classes.py::test_runs_without_site_packages`（`-I -S` で site を切って実行） | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-005 | pre-push のスキップ判定は検査の単位ごとに行う。ある検査に無関係な依存が欠けただけで別の検査が飛ばない | 未整備 | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Tentative |
 | REQ-D21-006 | CI は `tiktoken` 有無の両方で `pytest` を回す。optional 依存の片側だけが壊れる変更を検出できるようにする | `.github/workflows/ci.yml` の `test` ジョブの matrix | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-007 | stale 検査を行う CI ジョブは全履歴を取得する。shallow clone で判定できないことを「変更なし」と読まない | `.github/workflows/ci.yml` の `docs` ジョブの `fetch-depth: 0` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
@@ -191,5 +200,63 @@ fatal にすることで塞いだ。
 - `--warn-only` を付けても、規約の骨格が壊れていれば CI は落ちる
 - 検査を追加するときは「違反」か「検査不成立」かを先に決める
 - 回帰テストは `--warn-only` での終了コードも検証する（`case(..., warn_only_rc=...)`）
+
+### #1-3: 判定器のセルフレビューで見つかった fail-open をまとめて塞ぐ (2026-08-25) — 採用
+
+#### コンテキスト
+
+`#1-2` で「検査不成立を違反と区別する」と決めたが、独立レビューを回したところ、**その決定を実装した
+判定器の側に同じ型の穴が複数残っていた**。決定を書いただけでは守られない、という実例になった。
+
+- push イベントの append-only 検査が `merge-base(origin/main, HEAD) == HEAD` になり、自分と自分を
+  比べて必ず通っていた
+- base に `docs/knowledge/` が無いときを無条件に「初回導入」として rc=0 にしていた（ディレクトリの
+  改名と区別が付かない）
+- 入口の `CLAUDE.md` / `README.md` が無ければリンク検査を黙って飛ばしていた
+- append-only 検査が**正規化後のテキスト**を比較しており、コードフェンスとインラインコードの中身は
+  書き換え放題だった
+- 検査対象の 3 本目（`check-no-pdf-committed.py`）にだけ回帰テストが無いのに、文書は「3 本と、
+  それぞれの回帰テスト」と書いていた
+- `--no-stale` を全ケースに渡していたため、stale 検査が 1 度も実行されていなかった
+
+#### 決定
+
+**判定できない条件はすべて fail-close に倒す。** 上記をすべて塞ぎ、あわせて次を規約に加える。
+
+- **`req-index` マーカー**を必須にし、README の「REQ 表のある文書（索引）」を実在する REQ マーカーの
+  集合と突合する。番号空間がクラス内グローバルなので、索引の欠落は採番の重複を招く
+- **一次資料は `docs/original-docs/` と `docs/qa/` の両方**。REQ の出典が名指しした一次資料は
+  `sources` にも要る、という封じを qa 側にも広げる
+- **`.gitignore` は綴りでなく効果で検査する。** `git check-ignore` に判定させ、等価な記法への
+  書き換えを違反にしない
+- **決定ログの status に `Superseded by #N-M` を許す。** 規約が「覆すときは新エントリを積む」と
+  している以上、その表記が書式違反になるのは矛盾していた
+- 既存エントリの**並べ替え・間への挿入**も append-only 違反として検出する
+
+#### 理由
+
+- **判定器の穴は、判定結果からは見えない。** 5 巡のセルフレビューで実装側に見つけたのと同じ型の欠陥が
+  判定器側にも入っていた。「規約を機械で守らせる仕組み」自体を、独立したレビューにかける必要がある。
+- **文書と実体の乖離は、それ自体が fail-open。** 「3 本と、それぞれの回帰テスト」と書いてあれば、
+  読み手はテストがある前提で判断する。書いた通りにするか、書き直すかの二択しかない。
+- **正規化は検出のための道具で、比較の道具ではない。** 長さを保つマスクに変えて、検出はマスク側・
+  比較は生テキスト側と役割を分けた。
+
+#### 却下した代替案
+
+- **push イベントでは append-only 検査をしない。** 直 push を禁じている以上ほぼ通らない経路だが、
+  「走っているのに何も見ていない」より「走らない」ほうが良いとは言えない。base を変えれば済む。
+- **`.gitignore` の行を完全一致で見続ける。** 実装は単純だが、検査しているのは規約ではなく綴り。
+- **REQ 索引を手書きのままにする。** README 自身が「突合していない」と限界を明記していたが、
+  限界を書くことは限界を塞ぐことの代わりにならない。
+
+#### 影響
+
+- `scripts/test-check-no-pdf-committed.py` を追加し、CI と pre-push の回帰テストは 3 本になる
+- 回帰テストは 73 + 17 + 9 パターン。stale 検査は一時 git リポジトリを作って実測する
+- REQ-D21-004 の検証手段を `-I -S`（site を切った実行）に変更。`sys.executable` での実行は
+  site-packages 込みなので「標準ライブラリのみ」の証明になっていなかった
+- pre-push の依存判定を「どの python でその依存を import できるか」に統一し、`.venv` の有無で
+  分岐しない
 
 <!-- decision-log:end -->

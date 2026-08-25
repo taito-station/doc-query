@@ -56,14 +56,22 @@ jobs:
         run: |
           python3 scripts/test-check-doc-classes.py
           python3 scripts/test-check-decision-log-immutability.py
+          python3 scripts/test-check-no-pdf-committed.py
 
       - name: 文書クラス・REQ 表・決定ログの検査
         run: python3 scripts/check-doc-classes.py
 
       - name: 決定ログの append-only 検査
         run: |
-          python3 scripts/check-decision-log-immutability.py \
-            --base "origin/${{ github.base_ref || github.event.repository.default_branch }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            # push（main への直接・マージ後）で base を origin/main にすると、
+            # merge-base が HEAD 自身になり「自分と自分」を比べて必ず通る。
+            # 静かな fail-open なので、直前のコミットと比べる。
+            base="HEAD^"
+          fi
+          python3 scripts/check-decision-log-immutability.py --base "$base"
 
       - name: 実物の文書・生成物の混入検査
         run: python3 scripts/check-no-pdf-committed.py

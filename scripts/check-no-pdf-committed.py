@@ -16,10 +16,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 追跡されていてはいけないパターン。index DB と評価コーパスの生成物。
-FORBIDDEN_GLOBS = ("*.pdf", ".docq/*", ".docq-eval/*")
-# .gitignore に必ず載っていてほしい行。
-REQUIRED_IGNORES = (".docq/", ".docq-eval/")
+# 追跡されていてはいけないパターン。実物の文書と、index DB / 評価コーパスの
+# 生成物。git のパススペックは大小を区別するので `:(icase)` を付ける——
+# `*.pdf` だけだと `.PDF` が素通りする。
+FORBIDDEN_GLOBS = (
+    ":(icase)*.pdf",
+    ":(icase)*.docx",
+    ":(icase)*.xlsx",
+    ":(icase)*.pptx",
+    ".docq/*",
+    ".docq-eval/*",
+)
+# 無視されていてほしいパス。`.gitignore` の行と文字列比較すると、`/.docq/` の
+# ような等価な記法へ書き換えただけで「無い」と報告する——それは規約ではなく
+# 綴りの検査になる。無視されるかどうかは git 自身に答えさせる。
+REQUIRED_IGNORED_PATHS = (".docq/probe", ".docq-eval/probe")
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -45,14 +56,15 @@ def main(argv: list[str] | None = None) -> int:
             if path.strip():
                 errors.append(f"追跡されている: {path}")
 
-    gitignore = root / ".gitignore"
-    if not gitignore.exists():
-        errors.append(".gitignore が無い")
-    else:
-        lines = {l.strip() for l in gitignore.read_text(encoding="utf-8").splitlines()}
-        for entry in REQUIRED_IGNORES:
-            if entry not in lines:
-                errors.append(f".gitignore に {entry} が無い")
+    for probe in REQUIRED_IGNORED_PATHS:
+        r = git(root, "check-ignore", "-q", "--no-index", "--", probe)
+        if r.returncode == 0:
+            continue
+        if r.returncode == 1:
+            errors.append(f"{probe} が git に無視されない（.gitignore を確認）")
+        else:
+            # 判定できないことを「無視されている」と読むのは fail-open。
+            errors.append(f"git check-ignore が失敗した（{probe}）: {r.stderr.strip()}")
 
     for m in errors:
         print(f"error: {m}")
