@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,10 +23,27 @@ GITIGNORE = ".docq/\n.docq-eval/\n"
 results: list[tuple[bool, str, str]] = []
 
 
+def isolated_env(ceiling: Path | None = None) -> dict[str, str]:
+    """利用者の git 設定から切り離した環境。
+
+    global の `commit.gpgsign` や `core.hooksPath` を継承すると、テストの
+    前提が環境ごとに崩れる（他所のフックを実行してしまうことすらある）。
+    ceiling を渡すと、祖先へのリポジトリ探索も打ち切る。
+    """
+    env = dict(os.environ)
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    if ceiling is not None:
+        env["GIT_CEILING_DIRECTORIES"] = str(ceiling)
+    return env
+
+
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     """git を実行する。失敗を素通りさせるとテストの前提が黙って崩れる。"""
     r = subprocess.run(["git", "-C", str(root), *args],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8",
+                       env=isolated_env())
     if r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} が失敗: {r.stderr.strip()}")
     return r
@@ -44,9 +62,10 @@ def build(tmp: Path) -> Path:
     return root
 
 
-def run(root: Path) -> subprocess.CompletedProcess:
+def run(root: Path, ceiling: Path | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CHECKER), "--root", str(root)],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          env=isolated_env(ceiling))
 
 
 def add(root: Path, rel: str, force: bool = False) -> None:
@@ -102,6 +121,22 @@ def test_index_db_is_rejected() -> None:
     case("索引 DB の追跡を弾く", mutate, 1, "追跡されている")
 
 
+def test_eval_corpus_is_rejected() -> None:
+    def mutate(root: Path) -> None:
+        add(root, ".docq-eval/corpus.pdf", force=True)
+    case("評価コーパスの追跡を弾く", mutate, 1, "追跡されている")
+
+
+def test_spreadsheet_is_rejected() -> None:
+    case("表計算ファイルの追跡を弾く", lambda root: add(root, "docs/sample.xlsx"),
+         1, "追跡されている")
+
+
+def test_slides_are_rejected() -> None:
+    case("スライドの追跡を弾く", lambda root: add(root, "docs/sample.pptx"),
+         1, "追跡されている")
+
+
 # --- .gitignore ------------------------------------------------------------
 def test_missing_ignore_is_rejected() -> None:
     def mutate(root: Path) -> None:
@@ -130,7 +165,9 @@ def test_outside_git_repo_is_rejected() -> None:
         plain = Path(td) / "plain"
         plain.mkdir()
         (plain / ".gitignore").write_text(GITIGNORE, encoding="utf-8")
-        r = run(plain)
+        # 祖先が git 管理下にある環境（TMPDIR をリポジトリ内へ向けている等）
+        # でも前提が崩れないよう、探索を打ち切る。
+        r = run(plain, ceiling=Path(td))
         ok = r.returncode == 1
         results.append((ok, "git リポジトリでなければ弾く",
                         "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))

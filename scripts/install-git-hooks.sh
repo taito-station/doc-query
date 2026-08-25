@@ -17,11 +17,13 @@ if [ -n "$prev" ] && [ "$prev" != "scripts/git-hooks" ]; then
     echo "警告: core.hooksPath は既に $prev を指しています。上書きします"
     echo "      元に戻すには: git config core.hooksPath $prev"
 fi
-if [ -z "$prev" ] && [ -d .git/hooks ] && ls .git/hooks/* >/dev/null 2>&1; then
-    # 拡張子の無い実行可能ファイルだけを数える（*.sample は git の雛形）。
-    n=$(find .git/hooks -type f -perm -u+x ! -name '*.sample' | wc -l | tr -d ' ')
+# linked worktree では .git はファイルなので、パスは git に解決させる。
+hooks_dir=$(git rev-parse --git-path hooks)
+if [ -z "$prev" ] && [ -d "$hooks_dir" ]; then
+    # 実行可能ファイルだけを数える（*.sample は git の雛形）。
+    n=$(find "$hooks_dir" -type f -perm -u+x ! -name '*.sample' | wc -l | tr -d ' ')
     if [ "$n" -gt 0 ]; then
-        echo "警告: .git/hooks/ に $n 個のフックがあります。core.hooksPath を"
+        echo "警告: $hooks_dir に $n 個のフックがあります。core.hooksPath を"
         echo "      張ると、それらは呼ばれなくなります"
     fi
 fi

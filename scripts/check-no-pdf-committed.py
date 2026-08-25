@@ -34,8 +34,10 @@ REQUIRED_IGNORED_PATHS = (".docq/probe", ".docq-eval/probe")
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args],
-                          capture_output=True, text=True)
+    # encoding を明示しないとロケール依存になる。core.quotePath=false は
+    # 非 ASCII のパスが quote されて読めなくなるのを防ぐ。
+    return subprocess.run(["git", "-C", str(root), "-c", "core.quotePath=false", *args],
+                          capture_output=True, text=True, encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:

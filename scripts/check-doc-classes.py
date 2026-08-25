@@ -31,7 +31,14 @@ ORIGINAL_DOCS_DIR = Path("docs/original-docs")
 QA_DIR = Path("docs/qa")
 # 一次資料として扱う場所。2 層モデルでは original-docs と qa の両方が
 # 一次資料側なので、片方だけを見ると sources の抜け道が残る。
-PRIMARY_DIRS = (ORIGINAL_DOCS_DIR, QA_DIR)
+# 末尾の区切りまで含めて比較する——付けないと docs/original-docs-old/ の
+# ような別ディレクトリを一次資料と誤認する。
+PRIMARY_PREFIXES = (f"{ORIGINAL_DOCS_DIR}/", f"{QA_DIR}/")
+# 1 文書に 1 組しか置けないマーカー。二重に置くと 2 組目が無検査域になる。
+SINGLE_PAIR_MARKERS = ("doc-classes", "doc-classes-na", "doc-classes-index",
+                       "req-index", "req-counts")
+# ルート README の REQ 集計。手書きの集計は必ず腐るので機械で突合する。
+REQ_COUNTS_RE = re.compile(r"Confirmed (\d+) 件 / Tentative (\d+) 件")
 REGISTRY = KNOWLEDGE_DIR / "doc-classes.md"
 CONVENTION = KNOWLEDGE_DIR / "README.md"
 # 本文リンクの検査だけはリポジトリルートの 2 本にも及ぶ。文書の改名で
@@ -62,8 +69,8 @@ DECISION_HEADING_RE = re.compile(r"^## 決定ログ$", re.M)
 # status は `Superseded by #1-3` のように空白を含む。単一トークンで受けると
 # 規約が前提にしている表記が「書式違反」になり、Superseded の許可分岐にも
 # 到達しない。
-DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ — (\S.*)$", re.M)
-DECISION_HEADING_FORMAT_RE = re.compile(r"#\d+-\d+: .+ — \S.*$")
+DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ \(\d{4}-\d{2}-\d{2}\) — (\S.*)$", re.M)
+DECISION_HEADING_FORMAT_RE = re.compile(r"#\d+-\d+: .+ \(\d{4}-\d{2}-\d{2}\) — \S.*$")
 ANY_H3_RE = re.compile(r"^### (.*)$", re.M)
 REQ_BLOCK_RE = re.compile(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->", re.S)
 
@@ -185,6 +192,12 @@ def table_rows(block: str, rep: Report, where: str) -> list[list[str]]:
     書式が崩れた行は黙って落とさず fatal にする。落とすと一意性検査や
     件数の突合から消えて、違反が通ってしまう。
     """
+    # 先頭の `|` を欠いた行は GFM では表として描画されるが、規約では表行と
+    # 認めない。黙って落とすと、その行の検査が丸ごと消える。
+    for l in block.splitlines():
+        s = l.strip()
+        if not s.startswith("|") and s.count("|") >= 2:
+            rep.fatal(f"{where}: 表の書式が崩れた行がある（先頭が `|` でない）: {s[:40]}")
     lines = [l for l in block.splitlines() if l.strip().startswith("|")]
     if len(lines) < 2:
         rep.fatal(f"{where}: 表の見出し行・区切り行が無い")
@@ -251,8 +264,10 @@ class Doc:
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    # encoding を明示する。省くとロケール依存になり、C ロケールの環境で
+    # 日本語を含む出力が UnicodeDecodeError になる。
     return subprocess.run(["git", "-C", str(root), *args],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8")
 
 
 # --------------------------------------------------------------------------
@@ -454,10 +469,12 @@ def check_registry(reg_text: str, docs: list[Doc], rep: Report) -> None:
             rep.error(f"割当索引に余剰の行: {rel}")
 
 
-def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> set[tuple[str, str]]:
-    """REQ 表を検査し、実在する (クラス, 文書) の組を返す。"""
+def check_req_tables(docs: list[Doc], root: Path, rep: Report
+                     ) -> tuple[set[tuple[str, str]], dict[str, int]]:
+    """REQ 表を検査し、実在する (クラス, 文書) の組と status の件数を返す。"""
     seen: dict[str, str] = {}   # ID -> 文書。クラス内グローバルなので横断で集める
     found: set[tuple[str, str]] = set()
+    counts: dict[str, int] = {}
     for doc in docs:
         spans: list[tuple[int, int]] = []
         for m in REQ_BLOCK_RE.finditer(doc.detect):
@@ -466,19 +483,28 @@ def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> set[tuple[str,
             found.add((cls, doc.rel))
             if doc.doc_class is None or cls not in doc.doc_class:
                 rep.error(f"{doc.rel}: REQ ブロック {cls} がこの文書の doc_class に無い")
-            lines = [l.strip() for l in block.splitlines() if l.strip().startswith("|")]
-            if not lines or lines[0] != REQ_HEADER:
-                rep.fatal(f"{doc.rel}: REQ 表の見出し行が規約と違う")
-                continue
+            where = f"{doc.rel} の REQ 表 {cls}"
             # セルの中身は生テキストで見る。インラインコードを剥がすと
             # `tests/...::test_x` も `TBD` もどちらも空になる。
             raw_block = _matching_raw_block(doc.body, cls)
-            raw_lines = [l.strip() for l in raw_block.splitlines()
-                         if l.strip().startswith("|")] if raw_block else lines
-            for raw in raw_lines[2:]:
-                cells = split_row(raw)
-                if cells is None or len(cells) != 5:
-                    rep.fatal(f"{doc.rel}: REQ 表は 5 列固定: {raw[:50]}")
+            if raw_block is None:
+                rep.fatal(f"{where}: 生テキストのブロックを取れない")
+                continue
+            lines = [l.strip() for l in raw_block.splitlines()
+                     if l.strip().startswith("|")]
+            if not lines or lines[0] != REQ_HEADER:
+                rep.fatal(f"{doc.rel}: REQ 表の見出し行が規約と違う")
+                continue
+            # 他の表と同じく table_rows に通す。ここだけ自前で [2:] を取ると
+            # 区切り行の実在を確かめないまま、先頭のデータ行が黙って
+            # 検査対象から外れる。
+            rows = table_rows(raw_block, rep, where)
+            if not rows:
+                rep.fatal(f"{where}: データ行が 0 件（検査が成立していない）")
+                continue
+            for cells in rows:
+                if len(cells) != 5:
+                    rep.fatal(f"{doc.rel}: REQ 表は 5 列固定: {cells}")
                     continue
                 rid, req, how, src, st = cells
                 if not re.fullmatch(rf"REQ-{cls}-\d{{3}}", rid):
@@ -493,6 +519,8 @@ def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> set[tuple[str,
                     rep.error(f"{rid}: 出典が空")
                 if st not in REQ_STATUS:
                     rep.error(f"{rid}: status の値域外 {st!r}")
+                else:
+                    counts[st] = counts.get(st, 0) + 1
                 if st == "Confirmed" and how.strip().strip("`").lower() in EMPTY_MEANS:
                     rep.error(f"{rid}: Confirmed なのに検証手段が空扱い（{how!r}）")
                 _check_req_source_in_sources(doc, rid, src, root, rep)
@@ -505,7 +533,28 @@ def check_req_tables(docs: list[Doc], root: Path, rep: Report) -> set[tuple[str,
             outside = outside[:a] + outside[b:]
         if any(l.strip() == REQ_HEADER for l in outside.splitlines()):
             rep.fatal(f"{doc.rel}: マーカーの外に REQ 表がある")
-    return found
+    return found, counts
+
+
+def check_req_counts(readme_text: str, counts: dict[str, int], rep: Report) -> None:
+    """ルート README の REQ 集計を実数と突合する。
+
+    手書きの集計は必ず腐る。REQ 索引で同じことが起きたのと同型なので、
+    同じやり方（マーカーで囲って機械で突合）で塞ぐ。
+    """
+    where = "README.md の REQ 集計"
+    block = extract_block(readme_text, "req-counts")
+    if block is None:
+        rep.fatal("README.md: マーカー req-counts が無い")
+        return
+    m = REQ_COUNTS_RE.search(block)
+    if m is None:
+        rep.fatal(f"{where}: 「Confirmed N 件 / Tentative N 件」の形で書く: {block.strip()[:60]}")
+        return
+    for label, got in (("Confirmed", int(m.group(1))), ("Tentative", int(m.group(2)))):
+        want = counts.get(label, 0)
+        if got != want:
+            rep.error(f"{where}: {label} が {got} 件と書かれているが実数は {want} 件")
 
 
 def _matching_raw_block(body: str, cls: str) -> str | None:
@@ -530,7 +579,7 @@ def _check_req_source_in_sources(doc: Doc, rid: str, src: str,
             rel = resolved.relative_to(root.resolve())
         except ValueError:
             continue
-        if not any(str(rel).startswith(str(d)) for d in PRIMARY_DIRS):
+        if not str(rel).startswith(PRIMARY_PREFIXES):
             continue
         if str(rel) not in doc.sources:
             rep.error(f"{rid}: 出典 {rel} が {doc.rel} の sources に無い")
@@ -607,12 +656,43 @@ def check_req_index(conv_text: str, found: set[tuple[str, str]], rep: Report) ->
         rep.error(f"REQ 索引に余剰の行: {rel} の {cid}")
 
 
+def check_marker_pairs(rel: str, text: str, rep: Report) -> None:
+    """1 組しか置けないマーカーが、本当に 1 組かを見る。
+
+    `extract_block` は最初の対しか拾わないので、二重に置くと 2 組目が
+    黙って無検査域になる。
+    """
+    for name in SINGLE_PAIR_MARKERS:
+        b = text.count(f"<!-- {name}:begin -->")
+        e = text.count(f"<!-- {name}:end -->")
+        if b > 1 or e > 1 or b != e:
+            rep.fatal(f"{rel}: マーカー {name} が対で 1 組になっていない"
+                      f"（begin {b} / end {e}）")
+
+
 def check_layout(root: Path, rep: Report) -> None:
+    """knowledge のサブディレクトリに .md が無いこと。
+
+    `rglob` は走査中の PermissionError を握り潰すので使わない。読めない
+    ディレクトリがあると「サブディレクトリに .md は無い」と報告してしまう。
+    """
     kdir = root / KNOWLEDGE_DIR
-    for p in kdir.rglob("*.md"):
-        if p.parent != kdir:
-            rep.error(f"{p.relative_to(root)}: knowledge のサブディレクトリに .md を置かない"
-                      "（1 階層下げるだけで無検査域になる）")
+    stack = [kdir]
+    while stack:
+        cur = stack.pop()
+        names = listdir(cur, rep, str(KNOWLEDGE_DIR))
+        if names is None:
+            continue
+        for name in sorted(names):
+            child = cur / name
+            state = probe_dir(child, rep, str(KNOWLEDGE_DIR))
+            if state == UNKNOWN:
+                continue
+            if state == FOUND:
+                stack.append(child)
+            elif cur != kdir and name.endswith(".md"):
+                rep.error(f"{child.relative_to(root)}: knowledge のサブディレクトリに "
+                          ".md を置かない（1 階層下げるだけで無検査域になる）")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -646,19 +726,25 @@ def main(argv: list[str] | None = None) -> int:
             check_stale(doc, root, rep)
 
     reg = root / REGISTRY
-    if probe(reg, rep, str(REGISTRY)) == MISSING:
+    reg_state = probe(reg, rep, str(REGISTRY))
+    if reg_state == MISSING:
         rep.fatal(f"{REGISTRY} が無い（クラス定義の正本）")
-    else:
-        check_registry(strip_fences(reg.read_text(encoding="utf-8")), docs, rep)
+    elif reg_state == FOUND:
+        reg_text = strip_fences(reg.read_text(encoding="utf-8"))
+        check_marker_pairs(str(REGISTRY), reg_text, rep)
+        check_registry(reg_text, docs, rep)
 
-    req_found = check_req_tables(docs, root, rep)
+    req_found, req_counts = check_req_tables(docs, root, rep)
     check_decision_logs(docs, rep)
 
     conv = root / CONVENTION
-    if probe(conv, rep, str(CONVENTION)) == MISSING:
+    conv_state = probe(conv, rep, str(CONVENTION))
+    if conv_state == MISSING:
         rep.fatal(f"{CONVENTION} が無い（規約の正本）")
-    else:
-        check_req_index(strip_fences(conv.read_text(encoding="utf-8")), req_found, rep)
+    elif conv_state == FOUND:
+        conv_text = strip_fences(conv.read_text(encoding="utf-8"))
+        check_marker_pairs(str(CONVENTION), conv_text, rep)
+        check_req_index(conv_text, req_found, rep)
 
     for extra in EXTRA_LINK_TARGETS:
         p = root / extra
@@ -668,8 +754,11 @@ def main(argv: list[str] | None = None) -> int:
             # リンク検査が黙って 0 件になる。
             rep.fatal(f"{extra} が無い（入口リンクの検査が成立しない）")
         elif state == FOUND:
-            check_links(str(extra), strip_fences(p.read_text(encoding="utf-8")),
-                        root, rep)
+            text = strip_fences(p.read_text(encoding="utf-8"))
+            check_links(str(extra), text, root, rep)
+            if extra.name == "README.md":
+                check_marker_pairs(str(extra), text, rep)
+                check_req_counts(text, req_counts, rep)
 
     return _report(rep, args.warn_only)
 

@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -60,6 +61,19 @@ echo OLD
 results: list[tuple[bool, str, str]] = []
 
 
+def isolated_env() -> dict[str, str]:
+    """利用者の git 設定から切り離した環境。
+
+    global の `commit.gpgsign` や `core.hooksPath` を継承すると、テストの
+    前提が環境ごとに崩れる（他所のフックを実行してしまうことすらある）。
+    """
+    env = dict(os.environ)
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
+
+
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     """git を実行する。
 
@@ -67,7 +81,8 @@ def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     残る——テストの前提が崩れたことを、検査が通ったことと取り違える。
     """
     r = subprocess.run(["git", "-C", str(root), *args],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8",
+                       env=isolated_env())
     if r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} が失敗: {r.stderr.strip()}")
     return r
@@ -86,10 +101,10 @@ def build(tmp: Path) -> Path:
     return root
 
 
-def run(root: Path) -> subprocess.CompletedProcess:
+def run(root: Path, base: str = "main") -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(CHECKER), "--root", str(root), "--base", "main"],
-        capture_output=True, text=True)
+        [sys.executable, str(CHECKER), "--root", str(root), "--base", base],
+        capture_output=True, text=True, env=isolated_env())
 
 
 def commit(root: Path, msg: str = "change") -> None:
@@ -186,9 +201,7 @@ def test_missing_base_is_rejected() -> None:
     """基準が見つからないことを『違反なし』と読まない。"""
     with tempfile.TemporaryDirectory() as td:
         root = build(Path(td))
-        r = subprocess.run(
-            [sys.executable, str(CHECKER), "--root", str(root), "--base", "nonexistent"],
-            capture_output=True, text=True)
+        r = run(root, base="nonexistent")
         ok = r.returncode == 1
         results.append((ok, "存在しない基準を渡したら弾く",
                         "" if ok else f"rc={r.returncode} out={r.stdout.strip()[:200]}"))

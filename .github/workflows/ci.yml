@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # main への push では打ち切らない。連続マージで先行ジョブがキャンセルされると、
+  # 検査が走っていないコミットが履歴上は緑に見える。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -62,14 +64,27 @@ jobs:
         run: python3 scripts/check-doc-classes.py
 
       - name: 決定ログの append-only 検査
+        # context は env 経由で受ける。run の本文へ直接展開すると、ref 名を
+        # 通じたコマンド注入の面が残る。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            base="origin/${{ github.base_ref }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="origin/$BASE_REF"
           else
-            # push（main への直接・マージ後）で base を origin/main にすると、
-            # merge-base が HEAD 自身になり「自分と自分」を比べて必ず通る。
-            # 静かな fail-open なので、直前のコミットと比べる。
-            base="HEAD^"
+            # push で base を origin/main にすると merge-base が HEAD 自身に
+            # なり、「自分と自分」を比べて必ず通る。push 前の位置と比べる。
+            # HEAD^ 固定だと、複数コミットを一度に push したとき最後の 1 つ
+            # しか見ない。
+            case "$PUSH_BEFORE" in
+              ""|0000000000000000000000000000000000000000)
+                echo "error: push の before が空（新規ブランチ / force push）。比較できない"
+                exit 1
+                ;;
+            esac
+            base="$PUSH_BEFORE"
           fi
           python3 scripts/check-decision-log-immutability.py --base "$base"
 

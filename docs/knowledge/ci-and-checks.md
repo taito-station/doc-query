@@ -9,7 +9,7 @@ sources:
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
 distilled_from_sha: "29b7c11"
-updated: "2026-08-25"
+updated: "2026-08-26"
 ---
 
 # CI と機械検査
@@ -75,7 +75,11 @@ CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。
 |---|---|
 | `test` | Python 3.10（`[dev]` のみ＝**tiktoken 無しのフォールバック経路**）と 3.13（`[tokens,dev]`）の 2 通りで `pytest` |
 | `docs` | 検査スクリプト 3 本の回帰テスト → 本番検査 → 実物文書の混入検査 |
-| `eval` | ゴールデンクエリの回帰計測（[search-quality-evaluation.md](search-quality-evaluation.md)） |
+
+**ゴールデンクエリの回帰計測（`eval`）はまだ無い。** `scripts/eval-golden.py` が未作成で、
+pre-push 側も「スクリプトが無い」と表示して飛ばす。計測の設計は
+[search-quality-evaluation.md](search-quality-evaluation.md) にあるが、**実体が無いものを
+ジョブ表に現在形で載せない**——文書と実体の乖離はそれ自体が fail-open（決定ログ `#1-3`）。
 
 **`docs` ジョブは全履歴を取得する必要がある。** stale 検査が `git log` と `merge-base` を使うので、
 shallow clone では判定できず warning に退化する——これも fail-open の一種。
@@ -261,5 +265,43 @@ fatal にすることで塞いだ。
 - **`Report` の warning 系統を削る。** `#1-2` は error / warning / fatal の 3 系統と書いたが、
   warning は produce 側が一度も書かれず dead code のままだった。`#1-2` の核（fatal を
   `--warn-only` でも抑止しない）は変わらない。**必要になったら最初の利用箇所と一緒に戻す**
+
+### #1-4: 手書きの索引・集計は置かず、必ず実数と突合する (2026-08-26) — 採用
+
+#### コンテキスト
+
+`#1-3` で REQ 索引（`req-index`）を機械突合にしたが、2 巡目のレビューで**同型の乖離がもう 1 つ**
+見つかった。ルート `README.md` の「Confirmed 10 件 / Tentative 18 件」が実数（17 / 18）とずれており、
+機械検査の対象外なので CI では捕まらない状態だった。加えて、`ci-and-checks.md` のジョブ構成表が
+**実在しない `eval` ジョブ**を現在形で載せていた。
+
+#### 決定
+
+**文書の中に置く「集計」と「索引」は、機械で実数と突合できる形にする。** できないものは書かない。
+
+- ルート `README.md` の REQ 集計を `req-counts` マーカーで囲い、status 別の実数と突合する
+- 実体の無いジョブ・スクリプトを表に現在形で載せない（`eval` は「まだ無い」と明記した）
+
+#### 理由
+
+- **同じ型の欠陥が 2 巡続けて出た。** 1 度目は「限界として明記する」で済ませていたが、
+  限界を書くことは限界を塞ぐことの代わりにならない、というのが `#1-3` の結論だった。
+- **数字は最も腐りやすい。** 要件を 1 行足すたびに全ての集計が古くなる。人手で追う前提を置くと、
+  「文書は信用できない」が常態化する。
+
+#### 却下した代替案
+
+- **集計を README から消す。** 腐らないが、入口から要件の規模が見えなくなる。突合できるなら残す。
+- **集計を検査せず「参考値」と断る。** 断り書きは読まれない。paddock の warning と同じ末路になる。
+
+#### 影響
+
+- マーカーは 7 種類になる（`req-counts` を追加）。1 組しか置けないマーカーの**二重化**も
+  「検査が成立していない」として fatal にする
+- REQ 表も他の表と同じく `table_rows()` を通す。区切り行の実在を確かめないまま先頭のデータ行が
+  黙って落ちる経路を塞いだ
+- CI の `run:` へ context を直接展開せず `env:` 経由にする。push の比較基準は
+  `github.event.before`（空・全 0 なら error）
+- 回帰テストの一時 git リポジトリは `GIT_CONFIG_GLOBAL=/dev/null` で利用者の設定から切り離す
 
 <!-- decision-log:end -->

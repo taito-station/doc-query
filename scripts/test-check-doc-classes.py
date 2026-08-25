@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -22,6 +23,19 @@ ROOT = HERE.parent
 CHECKER = HERE / "check-doc-classes.py"
 
 results: list[tuple[bool, str, str]] = []
+
+
+def isolated_env() -> dict[str, str]:
+    """利用者の git 設定から切り離した環境。
+
+    global の `commit.gpgsign` や `core.hooksPath` を継承すると、テストの
+    前提が環境ごとに崩れる（他所のフックを実行してしまうことすらある）。
+    """
+    env = dict(os.environ)
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    return env
 
 
 def tracked_files() -> list[str]:
@@ -72,6 +86,15 @@ def edit(path: Path, old: str, new: str) -> None:
     if old not in t:
         raise AssertionError(f"前提が崩れている: {path.name} に {old[:40]!r} が無い")
     path.write_text(t.replace(old, new, 1), encoding="utf-8")
+
+
+def bump_req_count(root: Path, label: str, delta: int) -> None:
+    """ルート README の REQ 集計を delta だけ動かす。件数は書き固めない。"""
+    p = root / "README.md"
+    m = re.search(rf"{label} (\d+) 件", p.read_text(encoding="utf-8"))
+    if m is None:
+        raise AssertionError(f"前提が崩れている: README.md に {label} の件数が無い")
+    edit(p, m.group(0), f"{label} {int(m.group(1)) + delta} 件")
 
 
 def case(name: str, mutate, expect_in_output: str, expect_rc: int = 1,
@@ -366,6 +389,7 @@ def test_req_blocks_two_in_one_doc() -> None:
              "| D21 | [ci-and-checks.md](ci-and-checks.md) | CI と機械検査の構成・実行順序 |",
              "| D17 | [ci-and-checks.md](ci-and-checks.md) | 二つ目のブロック |\n"
              "| D21 | [ci-and-checks.md](ci-and-checks.md) | CI と機械検査の構成・実行順序 |")
+        bump_req_count(root, "Tentative", 1)
     with tempfile.TemporaryDirectory() as td:
         root = build(Path(td))
         mutate(root)
@@ -422,6 +446,41 @@ def test_req_index_marker_missing() -> None:
     case("REQ 索引のマーカー欠落", mutate, "マーカー req-index が無い", warn_only_rc=1)
 
 
+def test_req_counts_mismatch() -> None:
+    """ルート README の REQ 集計が実数とずれたら落ちる。"""
+    def mutate(root: Path) -> None:
+        bump_req_count(root, "Confirmed", 3)
+    case("README の REQ 集計が実数と違う", mutate, "実数は", warn_only_rc=0)
+
+
+def test_req_counts_marker_missing() -> None:
+    def mutate(root: Path) -> None:
+        edit(root / "README.md", "<!-- req-counts:begin -->", "")
+    case("REQ 集計のマーカー欠落", mutate, "マーカー req-counts が無い", warn_only_rc=1)
+
+
+def test_duplicate_single_pair_marker() -> None:
+    """1 組しか置けないマーカーの二重化を検出する（2 組目が無検査域になる）。"""
+    def mutate(root: Path) -> None:
+        p = root / K / "doc-classes.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n<!-- doc-classes-index:begin -->\n"
+                       "| 文書 | doc_class |\n|---|---|\n"
+                       "<!-- doc-classes-index:end -->\n",
+                     encoding="utf-8")
+    case("1 組しか置けないマーカーの二重化", mutate, "対で 1 組になっていない",
+         warn_only_rc=1)
+
+
+def test_req_table_separator_removed() -> None:
+    """REQ 表の区切り行を消したら、黙って 1 行落とさずに落ちる。"""
+    def mutate(root: Path) -> None:
+        edit(root / K / "product-goals.md",
+             "| REQ-ID | 要件 | 検証手段 | 出典 | status |\n|---|---|---|---|---|\n",
+             "| REQ-ID | 要件 | 検証手段 | 出典 | status |\n")
+    case("REQ 表の区切り行が無い", mutate, "区切り行でない", warn_only_rc=1)
+
+
 def test_req_source_in_qa_not_in_sources() -> None:
     """一次資料は original-docs だけではない。qa 出典の抜け道も塞ぐ。"""
     def mutate(root: Path) -> None:
@@ -472,7 +531,8 @@ def test_runs_without_site_packages() -> None:
 # --- stale 検査（一時 git リポジトリで確かめる）----------------------------
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
     r = subprocess.run(["git", "-C", str(root), *args],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8",
+                       env=isolated_env())
     if r.returncode != 0:
         raise AssertionError(f"git {' '.join(args)} が失敗: {r.stderr.strip()}")
     return r
@@ -499,7 +559,7 @@ def build_git(tmp: Path) -> Path:
 
 def run_stale(root: Path) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CHECKER), "--root", str(root)],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, env=isolated_env())
 
 
 def test_stale_clean_passes() -> None:

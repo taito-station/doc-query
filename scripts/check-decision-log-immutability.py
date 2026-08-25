@@ -39,8 +39,12 @@ INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(root), *args],
-                          capture_output=True, text=True)
+    # encoding を明示する。省くとロケール依存になり、C ロケールの環境では
+    # 日本語の決定ログ全文を読む `git show` が UnicodeDecodeError で落ちる。
+    # core.quotePath=false は、非 ASCII のパスを git が quote して
+    # 後続の `git show ref:path` が「読めない」と誤検知するのを防ぐ。
+    return subprocess.run(["git", "-C", str(root), "-c", "core.quotePath=false", *args],
+                          capture_output=True, text=True, encoding="utf-8")
 
 
 def mask(text: str) -> str:
@@ -122,21 +126,23 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     ref = mb.stdout.strip()
 
-    ls = git(root, "ls-tree", "-r", "--name-only", ref, TARGET_DIR)
+    # -z で受ける。改行やクォートを含むパスで一覧が崩れると、読めなかった
+    # ものを「対象が無い」と取り違える。
+    ls = git(root, "ls-tree", "-r", "--name-only", "-z", ref, TARGET_DIR)
     if ls.returncode != 0:
         print(f"error: {ref} のツリーを読めない: {ls.stderr.strip()}")
         return 1
-    base_files = [l for l in ls.stdout.splitlines() if l.endswith(".md")]
+    base_files = [l for l in ls.stdout.split("\0") if l.endswith(".md")]
 
     if not base_files:
         # 「base に対象が無い」は初回導入かもしれないが、TARGET_DIR の改名や
         # パスの取り違えでも同じ形になる。区別できるのは HEAD 側だけ——
         # HEAD にも無ければ、それは検査が成立していない。
-        head_ls = git(root, "ls-tree", "-r", "--name-only", "HEAD", TARGET_DIR)
+        head_ls = git(root, "ls-tree", "-r", "--name-only", "-z", "HEAD", TARGET_DIR)
         if head_ls.returncode != 0:
             print(f"error: HEAD のツリーを読めない: {head_ls.stderr.strip()}")
             return 1
-        if not [l for l in head_ls.stdout.splitlines() if l.endswith(".md")]:
+        if not [l for l in head_ls.stdout.split("\0") if l.endswith(".md")]:
             print(f"error: {ref} にも HEAD にも {TARGET_DIR} の .md が無い"
                   "（初回導入ではなく、検査が成立していない）")
             return 1
