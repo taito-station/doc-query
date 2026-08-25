@@ -7,8 +7,8 @@ sources:
   - docs/knowledge/README.md
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "29b7c11"
-updated: "2026-08-25"
+distilled_from_sha: "37d71f9"
+updated: "2026-08-26"
 ---
 
 # 用語集
