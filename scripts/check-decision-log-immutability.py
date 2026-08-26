@@ -87,6 +87,11 @@ def split_entries(section: str, masked: str) -> dict[str, str]:
     marks = [(m.group(1), m.start()) for m in ENTRY_RE.finditer(masked)]
     out[PREAMBLE] = section[:marks[0][1] if marks else len(section)].strip()
     for i, (eid, start) in enumerate(marks):
+        if eid in out:
+            # 後勝ちで上書きすると、既存エントリを改変したうえで同じ ID の
+            # 複製を末尾に積むだけで比較をすり抜けられる。ID が重複した時点で
+            # 比較そのものが成立しないので、fail-close に倒す。
+            raise ValueError(f"決定ログの見出し ID {eid} が重複している（比較が成立しない）")
         end = marks[i + 1][1] if i + 1 < len(marks) else len(section)
         out[eid] = section[start:end].strip()
     return out
@@ -176,8 +181,12 @@ def main(argv: list[str] | None = None) -> int:
             errors.append(f"{path}: 決定ログ節ごと削除されている")
             continue
 
-        old_entries = split_entries(*old)
-        new_entries = split_entries(*new)
+        try:
+            old_entries = split_entries(*old)
+            new_entries = split_entries(*new)
+        except ValueError as e:
+            errors.append(f"{path}: {e}")
+            continue
         for eid, body in old_entries.items():
             if eid not in new_entries:
                 errors.append(f"{path}: 決定ログの{label(eid)}が削除されている")

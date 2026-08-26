@@ -255,6 +255,23 @@ def test_insertion_between_entries_is_rejected() -> None:
     case("既存の間への挿入を弾く", mutate, 1, "順序が変わっている")
 
 
+def test_duplicate_id_is_rejected() -> None:
+    """既存エントリを改変し、同じ ID の複製を末尾に積む細工を弾く。
+
+    見出し ID を辞書の鍵にしているので、後勝ちで上書きされると
+    「改変されていない」ように見えてしまう。
+    """
+    def mutate(root: Path) -> None:
+        p = doc(root)
+        t = p.read_text(encoding="utf-8")
+        i, j = t.index("### #1-1:"), t.index("### #1-2:")
+        original = t[i:j]                      # 旧本文まるごと
+        t = t[:i] + original.replace("もとの本文。", "書き換えた。") + t[j:]
+        t = t.replace("<!-- decision-log:end -->", original + "<!-- decision-log:end -->")
+        p.write_text(t, encoding="utf-8")
+    case("改変＋同 ID の複製を末尾に積む細工を弾く", mutate, 1, "重複している")
+
+
 def test_uncommitted_edit_is_not_judged() -> None:
     """比較はコミット同士。手元の未コミット状態を判定に混ぜない。"""
     with tempfile.TemporaryDirectory() as td:

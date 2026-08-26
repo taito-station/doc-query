@@ -10,6 +10,9 @@
 """
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import os
 import re
 import shutil
@@ -21,6 +24,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 CHECKER = HERE / "check-doc-classes.py"
+
+
+def _load_checker():
+    spec = importlib.util.spec_from_file_location("check_doc_classes", CHECKER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+CHECKER_MOD = _load_checker()
 
 results: list[tuple[bool, str, str]] = []
 
@@ -73,12 +86,31 @@ def build(tmp: Path) -> Path:
     return root
 
 
-def run(root: Path, *extra: str) -> subprocess.CompletedProcess:
+class Result:
+    """subprocess.CompletedProcess のうち、このテストが見る部分だけ。"""
+
+    def __init__(self, returncode: int, stdout: str) -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+
+
+def invoke(*argv: str) -> Result:
+    """検査を **同一プロセス内** で呼ぶ。
+
+    毎回 python を起動すると 1 ケースあたり 0.5 秒近くかかり、ケースが増える
+    ほど pre-push が重くなる（実測で 90 秒を超えた）。CLI として単体で動く
+    ことは test_runs_without_site_packages がサブプロセスで確かめる。
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = CHECKER_MOD.main(list(argv))
+    return Result(rc, buf.getvalue())
+
+
+def run(root: Path, *extra: str) -> Result:
     # git 履歴を持たないコピーなので stale は対象外にする。
     # stale 自体は test_stale_* が一時 git リポジトリで確かめる。
-    return subprocess.run(
-        [sys.executable, str(CHECKER), "--root", str(root), "--no-stale", *extra],
-        capture_output=True, text=True)
+    return invoke("--root", str(root), "--no-stale", *extra)
 
 
 def edit(path: Path, old: str, new: str) -> None:
@@ -472,6 +504,28 @@ def test_duplicate_single_pair_marker() -> None:
          warn_only_rc=1)
 
 
+def test_marker_outside_its_home() -> None:
+    """正本以外の文書に単数マーカーを置いたら落ちる（無検査域になるため）。"""
+    def mutate(root: Path) -> None:
+        p = root / K / "glossary.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n<!-- doc-classes-index:begin -->\n"
+                       "| 文書 | doc_class |\n|---|---|\n"
+                       "| knowledge/nope.md | [D99] |\n"
+                       "<!-- doc-classes-index:end -->\n",
+                     encoding="utf-8")
+    case("正本以外に単数マーカーを置く", mutate, "にしか置けない", warn_only_rc=1)
+
+
+def test_req_index_marker_outside_home() -> None:
+    def mutate(root: Path) -> None:
+        p = root / K / "glossary.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n<!-- req-index:begin -->\n<!-- req-index:end -->\n",
+                     encoding="utf-8")
+    case("req-index を別文書に置く", mutate, "にしか置けない", warn_only_rc=1)
+
+
 def test_req_table_separator_removed() -> None:
     """REQ 表の区切り行を消したら、黙って 1 行落とさずに落ちる。"""
     def mutate(root: Path) -> None:
@@ -557,9 +611,9 @@ def build_git(tmp: Path) -> Path:
     return root
 
 
-def run_stale(root: Path) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(CHECKER), "--root", str(root)],
-                          capture_output=True, text=True, env=isolated_env())
+def run_stale(root: Path) -> Result:
+    # 検査は git を subprocess で呼ぶので、隔離は _git 側で効いている。
+    return invoke("--root", str(root))
 
 
 def test_stale_clean_passes() -> None:

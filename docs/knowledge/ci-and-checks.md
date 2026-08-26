@@ -47,6 +47,10 @@ pre-push の導入は `sh scripts/install-git-hooks.sh`（`core.hooksPath` を�
   `req-index` / `req-counts` / `REQ` / `decision-log`）。正本は [README.md](README.md) の
   「何が機械検査されるか」
 - 1 組しか置けないマーカーの**二重化**（抽出は最初の対しか見ないので、2 組目が無検査域になる）
+- 1 組しか置けないマーカーを**正本以外の文書に置く**（読みに行くのは正本 1 本だけなので、
+  そこに置かれた第 2 の一覧は誰にも検査されない）
+- 決定ログの**見出し ID の重複**（append-only 検査は ID を鍵に突き合わせるので、重複すると
+  「既存を改変して同じ ID の複製を末尾に積む」だけで比較をすり抜けられる）
 - 検査対象の文書が 0 件
 - 入口の `CLAUDE.md` / `README.md` が無い（リンク検査が黙って 0 件になる）
 - append-only 検査で、base にも HEAD にも `docs/knowledge/` の `.md` が無い（初回導入と区別が付かない）

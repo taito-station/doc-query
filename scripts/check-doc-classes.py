@@ -34,9 +34,17 @@ QA_DIR = Path("docs/qa")
 # 末尾の区切りまで含めて比較する——付けないと docs/original-docs-old/ の
 # ような別ディレクトリを一次資料と誤認する。
 PRIMARY_PREFIXES = (f"{ORIGINAL_DOCS_DIR}/", f"{QA_DIR}/")
-# 1 文書に 1 組しか置けないマーカー。二重に置くと 2 組目が無検査域になる。
-SINGLE_PAIR_MARKERS = ("doc-classes", "doc-classes-na", "doc-classes-index",
-                       "req-index", "req-counts")
+# 1 文書に 1 組しか置けないマーカーと、その置き場。二重に置くと 2 組目が、
+# 置き場を外れると全体が無検査域になる（読みに行くのは正本 1 本だけなので）。
+# 値が None のものは knowledge の外（リポジトリルートの README.md）。
+MARKER_HOME = {
+    "doc-classes": "knowledge/doc-classes.md",
+    "doc-classes-na": "knowledge/doc-classes.md",
+    "doc-classes-index": "knowledge/doc-classes.md",
+    "req-index": "knowledge/README.md",
+    "req-counts": None,
+}
+SINGLE_PAIR_MARKERS = tuple(MARKER_HOME)
 # ルート README の REQ 集計。手書きの集計は必ず腐るので機械で突合する。
 REQ_COUNTS_RE = re.compile(r"Confirmed (\d+) 件 / Tentative (\d+) 件")
 REGISTRY = KNOWLEDGE_DIR / "doc-classes.md"
@@ -670,6 +678,22 @@ def check_marker_pairs(rel: str, text: str, rep: Report) -> None:
                       f"（begin {b} / end {e}）")
 
 
+def check_marker_placement(docs: list[Doc], rep: Report) -> None:
+    """正本以外の文書に単数マーカーが置かれていないこと。
+
+    検査は正本 1 本しか読まないので、他の文書に置かれた同じマーカーは
+    黙って無検査域になる——正本と食い違う第 2 の一覧がそこに残りうる。
+    """
+    for doc in docs:
+        for name, home in MARKER_HOME.items():
+            if (f"<!-- {name}:begin -->" not in doc.detect
+                    and f"<!-- {name}:end -->" not in doc.detect):
+                continue
+            if doc.rel != home:
+                where = home or "リポジトリルートの README.md"
+                rep.fatal(f"{doc.rel}: マーカー {name} は {where} にしか置けない")
+
+
 def check_layout(root: Path, rep: Report) -> None:
     """knowledge のサブディレクトリに .md が無いこと。
 
@@ -734,6 +758,7 @@ def main(argv: list[str] | None = None) -> int:
         check_marker_pairs(str(REGISTRY), reg_text, rep)
         check_registry(reg_text, docs, rep)
 
+    check_marker_placement(docs, rep)
     req_found, req_counts = check_req_tables(docs, root, rep)
     check_decision_logs(docs, rep)
 
