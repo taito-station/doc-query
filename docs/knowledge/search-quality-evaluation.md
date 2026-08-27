@@ -1,5 +1,5 @@
 ---
-status: Tentative
+status: Confirmed
 kind: knowledge
 doc_class: [D17, D19]
 tags: [D17, D19]
@@ -12,10 +12,8 @@ updated: "2026-08-24"
 
 # 検索品質の計測
 
-> **status: Tentative。** ここに書かれた仕組みは
-> [#3](https://github.com/taito-station/doc-query/issues/3) で実装する。本文は設計として確定して
-> いるが、実装が無い間は受入基準として機能しない。実装が入った時点で Confirmed に上げ、
-> 実測のベースライン表を追記する。
+> **status: Confirmed。** 実装済み。初期ベースラインは #2（全角英数スコアリング欠陥）の修正前に
+> 記録しており、全角クエリの低い値は欠陥の数値固定が目的である。
 
 ## なぜ要るか
 
@@ -102,13 +100,13 @@ updated: "2026-08-24"
 <!-- REQ:begin D17 -->
 | REQ-ID | 要件 | 検証手段 | 出典 | status |
 |---|---|---|---|---|
-| REQ-D17-001 | 検索品質はゴールデンクエリ集に対する top-1 正解率 / top-k 正解率 / MRR@k で機械算出する | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D17-002 | 正解判定はヒットのパス一致かつページ範囲の閉区間が期待ページを含むこととする。パス一致のみを根拠に正解としない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D17-003 | 正解判定の実装は 1 つとし、計測スクリプト側で再実装しない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D17-004 | ゴールデン集に実在しないコーパス・ページ、または一意でない anchor が含まれる場合は計測を実行せず失敗する | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D17-005 | 評価コーパスは生成物とし、生成元テキストのみをコミットする。生成は決定的で、描画幅を超える行があれば生成時に失敗する | 未整備 | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Tentative |
-| REQ-D17-006 | ランキングに影響する既定値（BM25 定数 / 語彙単位 / 正規化 / フォールバック条件）の変更は、開発用集とホールドアウト集の双方で記録済みベースラインを下回らないことを確認する | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D17-007 | 計測はトークンカウンタ名を記録し、ベースラインと異なるカウンタでの比較は実行せず失敗する | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
+| REQ-D17-001 | 検索品質はゴールデンクエリ集に対する top-1 正解率 / top-k 正解率 / MRR@k で機械算出する | `tests/test_golden_eval.py::TestEvaluateMetrics` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-002 | 正解判定はヒットのパス一致かつページ範囲の閉区間が期待ページを含むこととする。パス一致のみを根拠に正解としない | `tests/test_golden_eval.py::TestIsCorrect` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-003 | 正解判定の実装は 1 つとし、計測スクリプト側で再実装しない | `tests/test_golden_eval.py::TestIsCorrect`（`is_correct` が唯一の実装。`scripts/eval-golden.py` は呼ぶだけ） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-004 | ゴールデン集に実在しないコーパス・ページ、または一意でない anchor が含まれる場合は計測を実行せず失敗する | `tests/test_golden_eval.py::TestValidateGoldenSet` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-005 | 評価コーパスは生成物とし、生成元テキストのみをコミットする。生成は決定的で、描画幅を超える行があれば生成時に失敗する | `tests/test_golden_eval.py::TestGenerateCorpus` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
+| REQ-D17-006 | ランキングに影響する既定値（BM25 定数 / 語彙単位 / 正規化 / フォールバック条件）の変更は、開発用集とホールドアウト集の双方で記録済みベースラインを下回らないことを確認する | `scripts/eval-golden.py --check-baseline`（pre-push フックが `--set dev` で実行） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-007 | 計測はトークンカウンタ名を記録し、ベースラインと異なるカウンタでの比較は実行せず失敗する | `tests/test_golden_eval.py::TestEvaluateMetrics::test_token_counter_recorded` + `scripts/eval-golden.py` のカウンタ不一致チェック | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 <!-- REQ:end D17 -->
 
 ---
