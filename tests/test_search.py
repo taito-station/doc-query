@@ -1,7 +1,7 @@
 import json
 
 from docq import indexer, search, store
-from docq import tokens as _tokens
+from docq import tokens
 
 
 def _indexed_conn(tmp_path, sample_pdf):
@@ -112,9 +112,9 @@ def test_budget_cost_covers_full_json_not_just_snippet(tmp_path, sample_pdf):
     hits = search.search(conn, "東京", top_k=1, max_tokens=800)
     assert hits
     hit = hits[0]
-    expected = max(1, _tokens.count_tokens(json.dumps(hit.to_dict(), ensure_ascii=False)))
+    expected = max(1, tokens.count_tokens(json.dumps(hit.to_dict(), ensure_ascii=False)))
     assert search._budget_cost(hit) == expected
-    snippet_only = _tokens.count_tokens(hit.snippet or "")
+    snippet_only = tokens.count_tokens(hit.snippet or "")
     assert search._budget_cost(hit) > snippet_only
 
 
@@ -132,6 +132,7 @@ def test_query_with_no_scoring_terms_falls_back_to_grep(tmp_path, sample_pdf):
     assert search.tokenize("!!!") == [], "precondition: tokenize() returns no terms"
     hits = search.search(conn, "!!!", top_k=5, max_tokens=800)
     assert hits, "grep fallback finds literal '!!!' in fixture text"
+    assert any("!!!" in (h.snippet or "") for h in hits), "hit content must contain the queried literal"
 
 
 def test_query_with_scoring_terms_stays_in_bm25(tmp_path, sample_pdf):

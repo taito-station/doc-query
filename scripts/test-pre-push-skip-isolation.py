@@ -30,7 +30,8 @@ def followed_by(text: str, cond_substr: str, expect_substr: str,
 
     if/else/fi をネスト込みで厳密に対応付けようとすると壊れやすいので、
     「スキップ判定のすぐ後で対応する検査コマンドが呼ばれている」ことを
-    近傍の行ウィンドウで近似的に確かめる。
+    近傍の行ウィンドウで近似的に確かめる。window=12 は現在の最長検査
+    ブロック（約 8 行）に余裕を加えた値。
     """
     lines = text.splitlines()
     idx = next((i for i, l in enumerate(lines) if cond_substr in l), None)
