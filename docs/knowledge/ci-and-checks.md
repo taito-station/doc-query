@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
-distilled_from_sha: "e2945c2"
+distilled_from_sha: "a539394"
 updated: "2026-08-27"
 ---
 
@@ -126,13 +126,13 @@ doc-query は約 1,000 行、paddock は約 61,000 行。規約は規模に読�
 | REQ-D21-002 | 検査自身の回帰テストを本番検査より先に走らせる。判定器の健全性を、本番検査が落ちる前に確かめる | `.github/workflows/ci.yml` の `docs` ジョブのステップ順 / `scripts/test-check-doc-classes.py` / `scripts/test-check-decision-log-immutability.py` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-003 | マーカーの欠落・検査対象 0 件・表の書式崩れは「違反」ではなく「検査が成立していない」として扱い、`--warn-only` でも抑止しない | `scripts/test-check-doc-classes.py::test_no_targets` / `::test_marker_missing` / `::test_broken_table_row`（いずれも `--warn-only` で rc=1 を検証） | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-004 | 検査スクリプトは標準ライブラリのみで動く。`python3` があれば実行できる性質を保つ | `scripts/test-check-doc-classes.py::test_runs_without_site_packages`（`-I -S` で site を切って実行） | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
-| REQ-D21-005 | pre-push のスキップ判定は検査の単位ごとに行う。ある検査に無関係な依存が欠けただけで別の検査が飛ばない | 未整備 | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Tentative |
+| REQ-D21-005 | pre-push のスキップ判定は検査の単位ごとに行う。ある検査に無関係な依存が欠けただけで別の検査が飛ばない | `scripts/test-pre-push-skip-isolation.py::test_skip_blocks_are_independent` / `::test_no_global_skip_guard` / `::test_skip_comment_documents_intent` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-006 | CI は `tiktoken` 有無の両方で `pytest` を回す。optional 依存の片側だけが壊れる変更を検出できるようにする | `.github/workflows/ci.yml` の `test` ジョブの matrix | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D21-007 | stale 検査を行う CI ジョブは全履歴を取得する。shallow clone で判定できないことを「変更なし」と読まない | `.github/workflows/ci.yml` の `docs` ジョブの `fetch-depth: 0` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 <!-- REQ:end D21 -->
 
-**REQ-D21-005 が Tentative なのは、スキップ経路を自動で踏むテストが無いため。** `python3` や
-`reportlab` を欠いた環境を作って検証する必要があり、実装は満たしているが測れていない。
+REQ-D21-005 は `scripts/test-pre-push-skip-isolation.py` が pre-push スクリプトの構造を解析して
+各スキップ判定が検査ブロックごとに独立していることを検証している。
 
 ---
 

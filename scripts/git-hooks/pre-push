@@ -52,6 +52,7 @@ if command -v python3 >/dev/null 2>&1; then
     quiet_run python3 scripts/test-check-doc-classes.py
     quiet_run python3 scripts/test-check-decision-log-immutability.py
     quiet_run python3 scripts/test-check-no-pdf-committed.py
+    quiet_run python3 scripts/test-pre-push-skip-isolation.py
 
     echo "==> 文書の機械検査"
     python3 scripts/check-doc-classes.py

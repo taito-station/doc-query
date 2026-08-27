@@ -66,7 +66,7 @@ class _MiniBM25:
     tuned for larger corpora.
     """
 
-    def __init__(self, corpus: list[list[str]], k1: float = 1.5, b: float = 0.75):
+    def __init__(self, corpus: list[list[str]], k1: float = 1.5, b: float = LENGTH_NORM_B):
         self.k1, self.b = k1, b
         self.N = len(corpus)
         self.avgdl = sum(len(d) for d in corpus) / self.N if self.N else 0

@@ -9,8 +9,8 @@ sources:
   - docq/store.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "3e83512"
-updated: "2026-08-24"
+distilled_from_sha: "a539394"
+updated: "2026-08-27"
 ---
 
 # 索引と検索
@@ -92,12 +92,11 @@ PDF には Markdown のような見出し構造が無いので、`mdq` が使う
 | 定数 | 実際に使われる値 | 置き場所 |
 |---|---:|---|
 | 語頻度飽和 `k1` | 1.5 | `_MiniBM25.__init__` の既定値（単一） |
-| 文書長正規化 `b` | 0.2 | `search.LENGTH_NORM_B`。**`__init__` の既定値は 0.75 で別物** |
+| 文書長正規化 `b` | 0.2 | `search.LENGTH_NORM_B`（`__init__` の既定値も同一） |
 
-**`b` は実装内に 2 つの値を持っている。** 唯一の呼び出し（`_MiniBM25(corpus, b=LENGTH_NORM_B)`）が
-0.2 を渡しているので現状の挙動は 0.2 だが、`_MiniBM25` を他所から素で構築すると既定の 0.75 が効く。
 移植元の要求（`FR-MDQ-06`）は「係数は実装内の単一の定数として定義し、利用可能な BM25 実装のいずれにも
-同じ値で適用する」と定めており、**この形はそれに反している**。REQ-D19-017 として起票した。
+同じ値で適用する」と定めており、`_MiniBM25.__init__` の既定値を `LENGTH_NORM_B` に統一して
+REQ-D19-017 を充足した。
 
 どちらも REQ-D17-006 の「ランキングに影響する既定値」に含まれるので、変更するには回帰計測が要る。
 
@@ -148,12 +147,12 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-001 | 索引単位は文書の 1 ページを 1000 文字窓 / 200 文字オーバーラップで分割したチャンクとし、`location` は `p.{N}` とする | `tests/test_indexer.py::test_windows_splits_long_text_with_overlap` / `::test_index_one_file_creates_chunks_per_page` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-002 | BM25 の IDF は `log(1 + (N-n+0.5)/(n+0.5))` で平滑化する。語がコーパスの半数以上のチャンクに出現してもスコアを 0 以下にしない | `tests/test_search.py::test_idf_stays_positive_for_a_term_in_every_document` / `::test_search_finds_a_term_present_in_every_chunk` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-003 | 返却単位は `line` / `chunk` / `locations` を呼び出し側が選べ、既定は `line` とする。指定が無いときに他へ切り替えない | `tests/test_search.py::test_search_returns_snippet_by_default` / `::test_search_return_unit_locations_has_no_snippet` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
-| REQ-D19-004 | 応答トークン予算の見積りは、返却する 1 ヒット分の JSON 全体に対して行う。snippet 本文の長さだけで見積もらない | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
-| REQ-D19-005 | スコアリング語彙は、連続する CJK を隣接 bigram、単独 CJK は 1 文字、ASCII 英数の連なりは分割しない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
+| REQ-D19-004 | 応答トークン予算の見積りは、返却する 1 ヒット分の JSON 全体に対して行う。snippet 本文の長さだけで見積もらない | `tests/test_search.py::test_budget_cost_covers_full_json_not_just_snippet` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
+| REQ-D19-005 | スコアリング語彙は、連続する CJK を隣接 bigram、単独 CJK は 1 文字、ASCII 英数の連なりは分割しない | `tests/test_tokenize.py::test_cjk_sequence_yields_bigrams` / `::test_single_cjk_yields_itself` / `::test_ascii_run_kept_whole_and_lowered` / `::test_mixed_cjk_ascii` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-006 | スコアリング語彙の生成前に NFKC 正規化を適用する。全角英数・ローマ数字・全角記号が語として残り、`指定席Ａ` と `指定席Ｓ` が同一クエリにならない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
 | REQ-D19-007 | 正規化は照合のためだけに用い、返す snippet 本文とページ範囲へ影響させない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D19-008 | grep モードは生の本文だけを照合し、スコアリング規約（bigram / 正規化）の対象外とする | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D19-009 | クエリからスコアリング語が 1 つも得られないときに限り grep へフォールバックする。空クエリはフォールバックせず 0 件を返す | `tests/test_search.py::test_empty_query_returns_no_hits` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
+| REQ-D19-008 | grep モードは生の本文だけを照合し、スコアリング規約（bigram / 正規化）の対象外とする | `tests/test_search.py::test_grep_mode_matches_raw_text_not_scoring_terms` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D19-009 | クエリからスコアリング語が 1 つも得られないときに限り grep へフォールバックする。空クエリはフォールバックせず 0 件を返す | `tests/test_search.py::test_empty_query_returns_no_hits` / `::test_query_with_no_scoring_terms_falls_back_to_grep` / `::test_query_with_scoring_terms_stays_in_bm25` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-010 | snippet 選定のトークナイザとスコアリング語彙は、同一の文字クラス定義と同一の正規化を共有し、片方だけ変更できない構造とする | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
 | REQ-D19-011 | 索引キーは基準ディレクトリからの相対パスとし、基準を索引に記録する。異なる基準からの書き込みは拒否する。読み取りは拒否しない | `tests/test_indexer.py::test_index_paths_refuses_a_store_bound_to_another_base_dir` / `tests/test_cli.py::test_index_from_another_directory_is_refused_but_search_is_not` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-012 | prune の対象は、今回スキャンした root 配下にあり、かつディスク上に無いことを確認できたエントリに限る。走査で見つからなかったことを削除の根拠にしない | `tests/test_indexer.py::test_index_paths_does_not_prune_files_under_other_roots` / `::test_index_paths_keeps_entries_it_cannot_verify` / `::test_index_paths_prunes_a_symlink_whose_target_is_gone` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
@@ -161,7 +160,7 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-014 | `index` の出力は `errors`（実行が成立しなかった。終了コード 1）と `warnings`（成立したが知っておくべきこと。終了コードに影響しない）を分ける | `tests/test_cli.py::test_warnings_are_reported_without_failing_the_run` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-015 | 1 ファイル分の索引書き込みは原子的とする。途中で失敗したファイルが「登録済みだがチャンク 0 件」として残り、以後スキップされ続けることがない | `tests/test_indexer.py::test_index_one_file_leaves_no_partial_write_behind` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
-| REQ-D19-017 | BM25 の文書長正規化係数は実装内の単一の値として定義する。既定値と呼び出し側で異なる値が存在してはならない | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
+| REQ-D19-017 | BM25 の文書長正規化係数は実装内の単一の値として定義する。既定値と呼び出し側で異なる値が存在してはならない | `tests/test_search.py::test_minibm25_default_b_equals_length_norm_b` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 <!-- REQ:end D19 -->
 
 ### Tentative の内訳
@@ -170,18 +169,8 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 
 | 要件 | 種別 | 解消の道筋 |
 |---|---|---|
-| D19-004 | 実装は満たすが**測る手段が無い** | 予算見積りの基準を固定するテストを足す |
-| D19-005 | 実装は満たすが**測る手段が無い** | `tests/test_tokenize.py` を新設する（移植元が mdq にある） |
 | D19-006 / 007 / 010 | **未実装**（[#2](https://github.com/taito-station/doc-query/issues/2)） | 回帰計測のベースライン取得後に NFKC を入れる |
-| D19-008 | 実装は満たすが**測る手段が無い** | grep モードが正規化を経ないことを固定するテストを足す |
-| D19-009 | **検証手段が不十分** | 空クエリの側は固定済みだが、「スコアリング語が取れないときのみ落ちる」側が未検証。上記「grep へのフォールバック」で門番が曖昧な点も未解消 |
 | D19-016 | **未実装** | 下記 |
-| D19-017 | **実装ギャップ** | `_MiniBM25.__init__` の `b` の既定値を `LENGTH_NORM_B` に寄せる |
-
-**REQ-D19-009 だけは検証手段が非空なのに Tentative** にしてある。既存のテストが押さえているのは
-「空クエリは 0 件」までで、要件の主節（**スコアリング語が取れないときに限り**フォールバックする）を
-検証していないため。**検証手段の欄が埋まっていることと、要件を測れていることは別**という実例として
-残す。
 
 **REQ-D19-016 は実装ギャップの可視化。** バージョンは記録しているが照合していない（`open_store` は
 未初期化の索引にだけ刻む）。実害は現時点で `check_base_dir` の「エントリはあるが基準が無い」判定が
