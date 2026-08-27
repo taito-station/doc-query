@@ -85,7 +85,7 @@ def test_no_global_skip_guard() -> None:
         raise AssertionError("前提が崩れている: 実行部分の開始行（==> の echo）が無い")
 
     preamble = "\n".join(lines[:first_exec])
-    ok = "exit 0" not in preamble
+    ok = not re.search(r"^\s*exit\s+0", preamble, re.M)
     check(ok, "実行部分の先頭（関数・変数定義部）に全検査バイパスの exit 0 が無い",
           preamble)
 

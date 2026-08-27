@@ -114,6 +114,8 @@ def test_budget_cost_covers_full_json_not_just_snippet(tmp_path, sample_pdf):
     hit = hits[0]
     expected = max(1, _tokens.count_tokens(json.dumps(hit.to_dict(), ensure_ascii=False)))
     assert search._budget_cost(hit) == expected
+    snippet_only = _tokens.count_tokens(hit.snippet or "")
+    assert search._budget_cost(hit) > snippet_only
 
 
 def test_grep_mode_matches_raw_text_not_scoring_terms(tmp_path, sample_pdf):
@@ -127,8 +129,8 @@ def test_grep_mode_matches_raw_text_not_scoring_terms(tmp_path, sample_pdf):
 
 def test_query_with_no_scoring_terms_falls_back_to_grep(tmp_path, sample_pdf):
     conn = _indexed_conn(tmp_path, sample_pdf)
+    assert search.tokenize("!!!") == [], "precondition: tokenize() returns no terms"
     hits = search.search(conn, "!!!", top_k=5, max_tokens=800)
-    assert search.tokenize("!!!") == [], "precondition: no scoring tokens"
     assert hits, "grep fallback finds literal '!!!' in fixture text"
 
 
