@@ -1,0 +1,9 @@
+[
+  {"anchor": "seat-s-only", "query": "指定席Ｓ", "expected_path": "ticket-prices.pdf", "expected_page": 2},
+  {"anchor": "category-1-maintenance", "query": "カテゴリⅠ 保守", "expected_path": "categories.pdf", "expected_page": 1},
+  {"anchor": "phone-area", "query": "０５０", "expected_path": "contact-info.pdf", "expected_page": 1},
+  {"anchor": "dual-band", "query": "dual-band connectivity", "expected_path": "product-catalog.pdf", "expected_page": 1},
+  {"anchor": "child-fare", "query": "小児 料金", "expected_path": "ticket-prices.pdf", "expected_page": 1},
+  {"anchor": "weekend-crowd", "query": "混雑", "expected_path": "common-terms.pdf", "expected_page": 2},
+  {"anchor": "abc-compat", "query": "ABC accessories", "expected_path": "product-catalog.pdf", "expected_page": 2}
+]

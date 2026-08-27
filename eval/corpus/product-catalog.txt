@@ -1,0 +1,9 @@
+Product Catalog
+The ABC-1200X is our flagship model. It features a high-resolution display
+and supports dual-band connectivity. For technical specifications, refer to
+the attached datasheet.
+本日の天気情報もご確認ください。
+%%PAGE%%
+Model DEF-800Y is the entry-level option. It provides basic functionality
+at an affordable price point. Compatible with all ABC series accessories.
+本日の天気情報もご確認ください。

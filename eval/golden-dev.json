@@ -1,0 +1,18 @@
+[
+  {"anchor": "seat-a-price", "query": "指定席Ａ 料金", "expected_path": "ticket-prices.pdf", "expected_page": 1},
+  {"anchor": "seat-s-price", "query": "指定席Ｓ 料金", "expected_path": "ticket-prices.pdf", "expected_page": 2},
+  {"anchor": "seat-b-price", "query": "指定席Ｂ 料金", "expected_path": "ticket-prices.pdf", "expected_page": 3},
+  {"anchor": "seat-a-refund", "query": "指定席Ａの払い戻し", "expected_path": "ticket-prices.pdf", "expected_page": 3},
+  {"anchor": "category-1", "query": "カテゴリⅠ", "expected_path": "categories.pdf", "expected_page": 1},
+  {"anchor": "category-2", "query": "カテゴリⅡ", "expected_path": "categories.pdf", "expected_page": 2},
+  {"anchor": "phone-full", "query": "０５０－３０６６－９６９０", "expected_path": "contact-info.pdf", "expected_page": 1},
+  {"anchor": "phone-partial", "query": "３０６６", "expected_path": "contact-info.pdf", "expected_page": 1},
+  {"anchor": "model-abc", "query": "ABC-1200X", "expected_path": "product-catalog.pdf", "expected_page": 1},
+  {"anchor": "model-def", "query": "DEF-800Y", "expected_path": "product-catalog.pdf", "expected_page": 2},
+  {"anchor": "flagship-spec", "query": "flagship specifications", "expected_path": "product-catalog.pdf", "expected_page": 1},
+  {"anchor": "seat-a-jp", "query": "指定席Ａ", "expected_path": "ticket-prices.pdf", "expected_page": 1},
+  {"anchor": "contact-hours", "query": "受付時間", "expected_path": "contact-info.pdf", "expected_page": 1},
+  {"anchor": "entry-level", "query": "entry-level option", "expected_path": "product-catalog.pdf", "expected_page": 2},
+  {"anchor": "maintenance-req", "query": "年間保守契約", "expected_path": "categories.pdf", "expected_page": 1},
+  {"anchor": "business-hours", "query": "営業時間", "expected_path": "common-terms.pdf", "expected_page": 1}
+]
