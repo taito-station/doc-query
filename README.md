@@ -44,7 +44,7 @@ python -m docq get --chunk-id <ID>
 | [docs/knowledge/doc-classes.md](docs/knowledge/doc-classes.md) | 文書クラスの定義（正本） |
 
 **要件は各文書の REQ 表**にあり、`REQ-D19-006` のように名指しできる。現時点で
-<!-- req-counts:begin -->Confirmed 17 件 / Tentative 18 件<!-- req-counts:end -->。**検証手段の無い要件は Confirmed にしない**規約なので、Tentative には「未実装」と
+<!-- req-counts:begin -->Confirmed 24 件 / Tentative 11 件<!-- req-counts:end -->。**検証手段の無い要件は Confirmed にしない**規約なので、Tentative には「未実装」と
 「実装は満たしているが測る手段が無い」が混在する。内訳は
 [index-and-search.md](docs/knowledge/index-and-search.md) の「Tentative の内訳」に表で置いてある。
 
