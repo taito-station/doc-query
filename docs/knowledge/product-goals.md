@@ -6,8 +6,8 @@ tags: [D01, D02]
 sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
-distilled_from_sha: "3e83512"
-updated: "2026-08-24"
+distilled_from_sha: "a539394"
+updated: "2026-08-27"
 ---
 
 # 目的・成功条件・対象境界
