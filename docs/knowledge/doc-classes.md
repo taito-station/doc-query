@@ -3,7 +3,7 @@ status: Confirmed
 kind: knowledge
 sources:
   - docs/qa/QA-doc-flow-introduction.md
-distilled_from_sha: "7681fc1"
+distilled_from_sha: "3e83512"
 updated: "2026-08-24"
 ---
 
@@ -17,10 +17,6 @@ HVE（[dahatake/HypervelocityEngineering](https://github.com/dahatake/Hyperveloc
 
 各文書は frontmatter の `doc_class` で自分のクラスを宣言する。**このファイルがクラス定義の正本**で、
 `scripts/check-doc-classes.py` が本ファイルと全文書の宣言の整合を機械検査する。
-
-> **機械検査はまだ稼働していない。** 本文で現在形で書いている検査は
-> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で実装する。稼働状況は
-> [ci-and-checks.md](ci-and-checks.md)、検査に課す仕様は [README.md](README.md) が持つ。
 
 > このファイル自身には `doc_class` を付けない（クラス定義そのものであってクラス付き文書ではない）。
 > [README.md](README.md) も同様に付けない（規約文書であり frontmatter を持たない）。
@@ -114,10 +110,10 @@ tags: [D19, D08]        # ミラー。doc_class と完全一致させる（check
 
 > **D13 / D20 の理由は「PII を扱わない」ではない。** 実際の PDF には PII が入りうる。閉じられるのは
 > 「成果物（索引 DB・評価コーパス）を一切リポジトリへ出さない」という境界を守れているからである。
-> **現時点でこの境界を守っているのは運用だけで、機械的な担保はまだ無い**（対応する REQ-D01-004 も
-> Tentative）。`scripts/check-no-pdf-committed.py` を
-> [#1](https://github.com/taito-station/doc-query/issues/1) の後続 PR で入れるまでは、この 2 クラスの
-> n/a は**暫定**として扱う。境界が動けば再開条件に当たる。
+> **この境界は機械で担保されている。** `scripts/check-no-pdf-committed.py` が CI と pre-push で
+> 走り（[ci-and-checks.md](ci-and-checks.md)）、実物の文書ファイルと生成物の追跡・`.gitignore` の
+> 効果を検査する。対応する REQ-D01-004 も Confirmed。よってこの 2 クラスの n/a は**暫定ではない**。
+> 境界が動けば再開条件に当たる。
 
 ## 割当の一覧
 

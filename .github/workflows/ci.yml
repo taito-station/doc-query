@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 読み取りだけで足りる。書き込み権限を既定で与えない。
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # main への push では打ち切らない。連続マージで先行ジョブがキャンセルされると、
+  # 検査が走っていないコミットが履歴上は緑に見える。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: pytest (${{ matrix.python }} / ${{ matrix.extras }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # tiktoken 無しのフォールバック経路（chars/4 近似）も回す。
+          # optional 依存なので、そちらだけが壊れる変更を検出できるようにする。
+          - python: "3.10"
+            extras: "dev"
+          - python: "3.13"
+            extras: "tokens,dev"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[${{ matrix.extras }}]"
+      - run: python -m pytest tests -q
+
+  docs:
+    name: 文書の機械検査
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # stale 検査が git log と merge-base を使う。shallow clone では
+          # 判定できず、それを「変更なし」と読むのは fail-open になる。
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      # 検査自身の回帰テストを先に走らせる。本番検査が先だと、落ちた瞬間に
+      # 判定器がまともかどうかを確かめる手段を同時に失う。
+      - name: 検査スクリプト自身の回帰テスト
+        run: |
+          python3 scripts/test-check-doc-classes.py
+          python3 scripts/test-check-decision-log-immutability.py
+          python3 scripts/test-check-no-pdf-committed.py
+
+      - name: 文書クラス・REQ 表・決定ログの検査
+        run: python3 scripts/check-doc-classes.py
+
+      - name: 決定ログの append-only 検査
+        # context は env 経由で受ける。run の本文へ直接展開すると、ref 名を
+        # 通じたコマンド注入の面が残る。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="origin/$BASE_REF"
+          else
+            # push で base を origin/main にすると merge-base が HEAD 自身に
+            # なり、「自分と自分」を比べて必ず通る。push 前の位置と比べる。
+            # HEAD^ 固定だと、複数コミットを一度に push したとき最後の 1 つ
+            # しか見ない。
+            case "$PUSH_BEFORE" in
+              ""|0000000000000000000000000000000000000000)
+                echo "error: push の before が空（新規ブランチ / force push）。比較できない"
+                exit 1
+                ;;
+            esac
+            base="$PUSH_BEFORE"
+          fi
+          python3 scripts/check-decision-log-immutability.py --base "$base"
+
+      - name: 実物の文書・生成物の混入検査
+        run: python3 scripts/check-no-pdf-committed.py
