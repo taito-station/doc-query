@@ -526,6 +526,90 @@ def test_req_index_marker_outside_home() -> None:
     case("req-index を別文書に置く", mutate, "にしか置けない", warn_only_rc=1)
 
 
+def test_marker_in_root_readme() -> None:
+    """knowledge の外（入口の 2 本）に置いた単数マーカーも捕まえる。"""
+    def mutate(root: Path) -> None:
+        p = root / "README.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n<!-- doc-classes-index:begin -->\n"
+                       "| 文書 | doc_class |\n|---|---|\n"
+                       "| knowledge/nope.md | [D99] |\n"
+                       "<!-- doc-classes-index:end -->\n",
+                     encoding="utf-8")
+    case("ルート README に単数マーカーを置く", mutate, "にしか置けない", warn_only_rc=1)
+
+
+def test_marker_in_claude_md() -> None:
+    def mutate(root: Path) -> None:
+        p = root / "CLAUDE.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n<!-- req-index:begin -->\n<!-- req-index:end -->\n",
+                     encoding="utf-8")
+    case("CLAUDE.md に単数マーカーを置く", mutate, "にしか置けない", warn_only_rc=1)
+
+
+def test_decision_entry_outside_marker() -> None:
+    """見出しを書かずにエントリだけマーカー外へ置く経路を塞ぐ。
+
+    そこに置かれた決定は append-only の保護が掛からず、後から自由に
+    書き換えられる。
+    """
+    def mutate(root: Path) -> None:
+        p = root / K / "product-goals.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n### #9-9: 無検査の決定 (2026-01-01) — 採用\n",
+                     encoding="utf-8")
+    case("マーカー外の決定ログエントリ", mutate, "マーカーの外に決定ログのエントリ",
+         warn_only_rc=1)
+
+
+def test_decision_entry_outside_marker_without_heading() -> None:
+    def mutate(root: Path) -> None:
+        p = root / K / "glossary.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n### #9-9: 無検査の決定 (2026-01-01) — 採用\n",
+                     encoding="utf-8")
+    case("見出し無しでマーカー外にエントリ", mutate, "マーカーの外にある", warn_only_rc=1)
+
+
+def test_decision_markers_reversed() -> None:
+    """begin と end が逆順でも、traceback ではなく検査不成立として報告する。"""
+    def mutate(root: Path) -> None:
+        p = root / K / "product-goals.md"
+        t = p.read_text(encoding="utf-8")
+        t = t.replace("<!-- decision-log:begin -->", "@@BEGIN@@")
+        t = t.replace("<!-- decision-log:end -->", "<!-- decision-log:begin -->")
+        t = t.replace("@@BEGIN@@", "<!-- decision-log:end -->")
+        p.write_text(t, encoding="utf-8")
+    case("decision-log マーカーが逆順", mutate, "順序が逆", warn_only_rc=1)
+
+
+def test_index_duplicate_row() -> None:
+    """割当索引に同じ文書の行が 2 つあると、前の行が無検査で残る。"""
+    def mutate(root: Path) -> None:
+        # 本文にも同じ字面がインラインコードで出るので、行末まで含めて狙う。
+        edit(root / K / "doc-classes.md",
+             "| knowledge/glossary.md | [D07] |\n",
+             "| knowledge/glossary.md | [D99] |\n| knowledge/glossary.md | [D07] |\n")
+    case("割当索引に同じ文書の行が複数", mutate, "の行が複数ある", warn_only_rc=0)
+
+
+def test_class_list_duplicate_row() -> None:
+    def mutate(root: Path) -> None:
+        edit(root / K / "doc-classes.md",
+             "| D07 | 用語集・ドメインモデル定義書 | active | 1 |",
+             "| D07 | 用語集・ドメインモデル定義書 | active | 1 |\n"
+             "| D07 | 用語集・ドメインモデル定義書 | active | 9 |")
+    case("クラス一覧に同じクラスの行が複数", mutate, "の行が複数ある", warn_only_rc=0)
+
+
+def test_uppercase_md_extension() -> None:
+    """`.MD` は収集の `*.md` に一致せず、全検査から外れる。"""
+    def mutate(root: Path) -> None:
+        (root / K / "Shadow.MD").write_text("# 無検査域\n", encoding="utf-8")
+    case("拡張子が大文字の .MD", mutate, "小文字の .md", warn_only_rc=0)
+
+
 def test_req_table_separator_removed() -> None:
     """REQ 表の区切り行を消したら、黙って 1 行落とさずに落ちる。"""
     def mutate(root: Path) -> None:

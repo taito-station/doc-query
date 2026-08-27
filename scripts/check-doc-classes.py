@@ -42,7 +42,7 @@ MARKER_HOME = {
     "doc-classes-na": "knowledge/doc-classes.md",
     "doc-classes-index": "knowledge/doc-classes.md",
     "req-index": "knowledge/README.md",
-    "req-counts": None,
+    "req-counts": "README.md",          # リポジトリルート
 }
 SINGLE_PAIR_MARKERS = tuple(MARKER_HOME)
 # ルート README の REQ 集計。手書きの集計は必ず腐るので機械で突合する。
@@ -80,6 +80,9 @@ DECISION_HEADING_RE = re.compile(r"^## 決定ログ$", re.M)
 DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ \(\d{4}-\d{2}-\d{2}\) — (\S.*)$", re.M)
 DECISION_HEADING_FORMAT_RE = re.compile(r"#\d+-\d+: .+ \(\d{4}-\d{2}-\d{2}\) — \S.*$")
 ANY_H3_RE = re.compile(r"^### (.*)$", re.M)
+# 決定ログのエントリらしい見出し。見出し行 `## 決定ログ` を書かずにエントリ
+# だけをマーカーの外へ置く経路を塞ぐために使う。
+ENTRY_HEADING_RE = re.compile(r"^### #\d+-\d+:", re.M)
 REQ_BLOCK_RE = re.compile(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->", re.S)
 
 
@@ -412,6 +415,10 @@ def check_registry(reg_text: str, docs: list[Doc], rep: Report) -> None:
             if not cur.isdigit():
                 rep.fatal(f"doc-classes.md: {cid} の現行が数値でない: {cur}")
                 continue
+            if cid in declared:
+                # 後勝ちで上書きすると、前の行が誰にも検査されないまま残る。
+                rep.error(f"doc-classes.md: クラス一覧に {cid} の行が複数ある")
+                continue
             declared[cid] = (state, int(cur))
 
     na_block = extract_block(reg_text, "doc-classes-na")
@@ -425,6 +432,8 @@ def check_registry(reg_text: str, docs: list[Doc], rep: Report) -> None:
             cid, reason, resume = cells
             if not reason or not resume:
                 rep.error(f"doc-classes.md: {cid} の N/A の理由 / 再開条件が空")
+            if cid in na:
+                rep.error(f"doc-classes.md: N/A 宣言表に {cid} の行が複数ある")
             na.add(cid)
 
     actual: dict[str, int] = {}
@@ -462,6 +471,11 @@ def check_registry(reg_text: str, docs: list[Doc], rep: Report) -> None:
             doc_path, classes = cells
             if not (classes.startswith("[") and classes.endswith("]")):
                 rep.fatal(f"doc-classes.md: 割当索引の doc_class 表記: {classes}")
+                continue
+            if doc_path in idx:
+                # 後勝ちで上書きされると、前の行（別のクラスを名乗る行）が
+                # 索引に残ったまま誰にも突合されない。
+                rep.error(f"doc-classes.md: 割当索引に {doc_path} の行が複数ある")
                 continue
             idx[doc_path] = [x.strip() for x in classes[1:-1].split(",") if x.strip()]
             order.append(doc_path)
@@ -599,6 +613,10 @@ def check_decision_logs(docs: list[Doc], rep: Report) -> None:
         ends = doc.detect.count("<!-- decision-log:end -->")
         if not DECISION_HEADING_RE.search(doc.detect):
             if begins == 0 and ends == 0:
+                if ENTRY_HEADING_RE.search(doc.detect):
+                    # 見出しを書かずにエントリだけ置いても、append-only の
+                    # 保護は掛からない（比較はマーカーの内側だけを見る）。
+                    rep.fatal(f"{doc.rel}: 決定ログのエントリがマーカーの外にある")
                 continue
             # 見出しの側からしか入らないと、見出しを 1 行消すだけで
             # マーカー内の検査（書式・ID 重複・status）が全部消える。
@@ -613,10 +631,20 @@ def check_decision_logs(docs: list[Doc], rep: Report) -> None:
         if begins != 1 or ends != 1:
             rep.fatal(f"{doc.rel}: decision-log マーカーが対で 1 組になっていない")
             continue
+        if doc.detect.index("<!-- decision-log:begin -->") > \
+                doc.detect.index("<!-- decision-log:end -->"):
+            # 逆順のまま split すると unpack で落ちる。原因の読めない
+            # traceback ではなく、検査不成立として報告する。
+            rep.fatal(f"{doc.rel}: decision-log マーカーの順序が逆")
+            continue
         before, rest = doc.detect.split("<!-- decision-log:begin -->", 1)
         seg, after = rest.split("<!-- decision-log:end -->", 1)
-        if DECISION_HEADING_RE.search(before) or DECISION_HEADING_RE.search(after):
+        outside = before + after
+        if DECISION_HEADING_RE.search(outside):
             rep.fatal(f"{doc.rel}: マーカーの外に決定ログ見出しがある")
+        if ENTRY_HEADING_RE.search(outside):
+            rep.fatal(f"{doc.rel}: マーカーの外に決定ログのエントリがある"
+                      "（append-only の保護が掛からない）")
         entries = DECISION_ENTRY_RE.findall(seg)
         if not entries:
             rep.error(f"{doc.rel}: 決定ログ節にエントリが無い")
@@ -678,20 +706,20 @@ def check_marker_pairs(rel: str, text: str, rep: Report) -> None:
                       f"（begin {b} / end {e}）")
 
 
-def check_marker_placement(docs: list[Doc], rep: Report) -> None:
+def check_marker_placement(texts: list[tuple[str, str]], rep: Report) -> None:
     """正本以外の文書に単数マーカーが置かれていないこと。
 
     検査は正本 1 本しか読まないので、他の文書に置かれた同じマーカーは
     黙って無検査域になる——正本と食い違う第 2 の一覧がそこに残りうる。
+    knowledge の外（ルートの README.md / CLAUDE.md）も対象に含める。
     """
-    for doc in docs:
+    for rel, text in texts:
         for name, home in MARKER_HOME.items():
-            if (f"<!-- {name}:begin -->" not in doc.detect
-                    and f"<!-- {name}:end -->" not in doc.detect):
+            if (f"<!-- {name}:begin -->" not in text
+                    and f"<!-- {name}:end -->" not in text):
                 continue
-            if doc.rel != home:
-                where = home or "リポジトリルートの README.md"
-                rep.fatal(f"{doc.rel}: マーカー {name} は {where} にしか置けない")
+            if rel != home:
+                rep.fatal(f"{rel}: マーカー {name} は {home} にしか置けない")
 
 
 def check_layout(root: Path, rep: Report) -> None:
@@ -714,7 +742,15 @@ def check_layout(root: Path, rep: Report) -> None:
                 continue
             if state == FOUND:
                 stack.append(child)
-            elif cur != kdir and name.endswith(".md"):
+                continue
+            low = name.lower()
+            if not low.endswith(".md"):
+                continue
+            if not name.endswith(".md"):
+                # 収集は `*.md` の完全一致なので、`.MD` は全検査から外れる。
+                rep.error(f"{child.relative_to(root)}: 拡張子は小文字の .md にする"
+                          "（大小が違うと検査対象から外れる）")
+            if cur != kdir:
                 rep.error(f"{child.relative_to(root)}: knowledge のサブディレクトリに "
                           ".md を置かない（1 階層下げるだけで無検査域になる）")
 
@@ -758,7 +794,21 @@ def main(argv: list[str] | None = None) -> int:
         check_marker_pairs(str(REGISTRY), reg_text, rep)
         check_registry(reg_text, docs, rep)
 
-    check_marker_placement(docs, rep)
+    # 入口の 2 本は、リンク検査だけでなくマーカーの検査にも掛ける。
+    # knowledge の外に置かれた一覧は、正本と食い違ったまま誰にも見られない。
+    extras: list[tuple[str, str]] = []
+    for extra in EXTRA_LINK_TARGETS:
+        p = root / extra
+        state = probe(p, rep, str(extra))
+        if state == MISSING:
+            # 無いことを「検査するものが無い」と読むと、入口の改名で
+            # リンク検査が黙って 0 件になる。
+            rep.fatal(f"{extra} が無い（入口リンクの検査が成立しない）")
+        elif state == FOUND:
+            extras.append((str(extra), strip_fences(p.read_text(encoding="utf-8"))))
+
+    check_marker_placement([(d.rel, d.detect) for d in docs]
+                           + [(rel, for_detection(t)) for rel, t in extras], rep)
     req_found, req_counts = check_req_tables(docs, root, rep)
     check_decision_logs(docs, rep)
 
@@ -771,19 +821,11 @@ def main(argv: list[str] | None = None) -> int:
         check_marker_pairs(str(CONVENTION), conv_text, rep)
         check_req_index(conv_text, req_found, rep)
 
-    for extra in EXTRA_LINK_TARGETS:
-        p = root / extra
-        state = probe(p, rep, str(extra))
-        if state == MISSING:
-            # 無いことを「検査するものが無い」と読むと、入口の改名で
-            # リンク検査が黙って 0 件になる。
-            rep.fatal(f"{extra} が無い（入口リンクの検査が成立しない）")
-        elif state == FOUND:
-            text = strip_fences(p.read_text(encoding="utf-8"))
-            check_links(str(extra), text, root, rep)
-            if extra.name == "README.md":
-                check_marker_pairs(str(extra), text, rep)
-                check_req_counts(text, req_counts, rep)
+    for rel, text in extras:
+        check_links(rel, text, root, rep)
+        check_marker_pairs(rel, text, rep)
+        if rel == "README.md":
+            check_req_counts(text, req_counts, rep)
 
     return _report(rep, args.warn_only)
 
