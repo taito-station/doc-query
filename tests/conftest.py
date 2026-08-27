@@ -30,7 +30,7 @@ def sample_pdf(tmp_path: Path) -> Path:
     """A 2-page text PDF with distinct, searchable content per page."""
     pdf_path = tmp_path / "sample.pdf"
     _write_pdf(pdf_path, [
-        ["東京の天気予報について", "本日は晴れ、最高気温は25度です。"],
+        ["東京の天気予報について", "本日は晴れ、最高気温は25度です。", "!!!注意!!!"],
         ["大阪の天気予報について", "本日は雨、最高気温は18度です。"],
     ])
     return pdf_path
