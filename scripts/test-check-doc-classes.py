@@ -572,6 +572,31 @@ def test_decision_entry_outside_marker_without_heading() -> None:
     case("見出し無しでマーカー外にエントリ", mutate, "マーカーの外にある", warn_only_rc=1)
 
 
+def test_indented_decision_entry_outside_marker() -> None:
+    """CommonMark は見出しの前に 1〜3 スペースを許す。
+
+    行頭完全一致で見ていると、スペースを 1 つ入れるだけでマーカー外の
+    エントリ検出をすり抜けられる（GitHub 上は普通の見出しとして描画される）。
+    """
+    def mutate(root: Path) -> None:
+        p = root / K / "product-goals.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n   ### #9-9: 隠しの決定 (2026-01-01) — 採用\n",
+                     encoding="utf-8")
+    case("インデントしたマーカー外のエントリ", mutate, "マーカーの外に決定ログのエントリ",
+         warn_only_rc=1)
+
+
+def test_indented_decision_heading_outside_marker() -> None:
+    def mutate(root: Path) -> None:
+        p = root / K / "glossary.md"
+        p.write_text(p.read_text(encoding="utf-8")
+                     + "\n ## 決定ログ\n\n ### #9-9: 隠し (2026-01-01) — 採用\n",
+                     encoding="utf-8")
+    case("インデントしたマーカー外の決定ログ見出し", mutate,
+         "マーカーの外に決定ログ見出し", warn_only_rc=1)
+
+
 def test_decision_markers_reversed() -> None:
     """begin と end が逆順でも、traceback ではなく検査不成立として報告する。"""
     def mutate(root: Path) -> None:

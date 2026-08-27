@@ -31,7 +31,9 @@ from pathlib import Path
 TARGET_DIR = "docs/knowledge"
 BEGIN = "<!-- decision-log:begin -->"
 END = "<!-- decision-log:end -->"
-ENTRY_RE = re.compile(r"^### (#\d+-\d+):", re.M)
+# CommonMark は ATX 見出しの前に 1〜3 個のスペースを許す。行頭完全一致だと
+# インデント 1 つでエントリの切り出しから外れる。
+ENTRY_RE = re.compile(r"^ {0,3}### (#\d+-\d+):", re.M)
 # エントリ見出しの ID とは衝突しない鍵。節の前書きを表す。
 PREAMBLE = "\x00preamble"
 FENCE_RE = re.compile(r"^```.*?^```", re.S | re.M)

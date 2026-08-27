@@ -73,16 +73,19 @@ LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 # `](path "title")` のタイトルはパスの一部ではない。付けたまま実在を見ると
 # 必ず「リンク先が実在しない」になる。
 LINK_TITLE_RE = re.compile(r'\s+"[^"]*"$')
-DECISION_HEADING_RE = re.compile(r"^## 決定ログ$", re.M)
+# CommonMark は ATX 見出しの前に 1〜3 個のスペースを許す。行頭完全一致で
+# 見ると、スペースを 1 つ入れるだけで検査を回避できてしまう。
+DECISION_HEADING_RE = re.compile(r"^ {0,3}## 決定ログ[ \t]*$", re.M)
 # status は `Superseded by #1-3` のように空白を含む。単一トークンで受けると
 # 規約が前提にしている表記が「書式違反」になり、Superseded の許可分岐にも
 # 到達しない。
-DECISION_ENTRY_RE = re.compile(r"^### (#\d+-\d+): .+ \(\d{4}-\d{2}-\d{2}\) — (\S.*)$", re.M)
+DECISION_ENTRY_RE = re.compile(
+    r"^ {0,3}### (#\d+-\d+): .+ \(\d{4}-\d{2}-\d{2}\) — (\S.*)$", re.M)
 DECISION_HEADING_FORMAT_RE = re.compile(r"#\d+-\d+: .+ \(\d{4}-\d{2}-\d{2}\) — \S.*$")
-ANY_H3_RE = re.compile(r"^### (.*)$", re.M)
+ANY_H3_RE = re.compile(r"^ {0,3}### (.*)$", re.M)
 # 決定ログのエントリらしい見出し。見出し行 `## 決定ログ` を書かずにエントリ
 # だけをマーカーの外へ置く経路を塞ぐために使う。
-ENTRY_HEADING_RE = re.compile(r"^### #\d+-\d+:", re.M)
+ENTRY_HEADING_RE = re.compile(r"^ {0,3}### #\d+-\d+:", re.M)
 REQ_BLOCK_RE = re.compile(r"<!-- REQ:begin (D\d\d) -->(.*?)<!-- REQ:end \1 -->", re.S)
 
 
