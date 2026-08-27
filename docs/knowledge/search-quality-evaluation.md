@@ -6,7 +6,7 @@ tags: [D17, D19]
 sources:
   - docs/original-docs/2-fullwidth-scoring-defect.md
   - docs/qa/QA-doc-flow-introduction.md
-distilled_from_sha: "3e83512"
+distilled_from_sha: "7ac8019"
 updated: "2026-08-24"
 ---
 
