@@ -10,7 +10,7 @@ sources:
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "1939aab"
+distilled_from_sha: "57ecae8"
 updated: "2026-08-27"
 ---
 
