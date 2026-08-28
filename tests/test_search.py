@@ -142,6 +142,25 @@ def test_query_with_scoring_terms_stays_in_bm25(tmp_path, sample_pdf):
     assert all(h.score > 0 for h in hits), "bm25 scores are positive"
 
 
+def test_snippet_preserves_original_text(tmp_path):
+    """D19-007: normalization is for matching only; the snippet text is verbatim."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    pdf = tmp_path / "fw.pdf"
+    c = canvas.Canvas(str(pdf), pagesize=A4)
+    c.setFont("HeiseiMin-W3", 12)
+    c.drawString(72, 800, "指定席Ａの価格は５０００円です")
+    c.save()
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_one_file(conn, tmp_path, pdf)
+    hits = search.search(conn, "指定席Ａ", top_k=1, max_tokens=800)
+    assert hits
+    assert "Ａ" in hits[0].snippet
+    assert "５０００" in hits[0].snippet
+
+
 def test_minibm25_default_b_equals_length_norm_b():
     corpus = [["東京", "天気"], ["大阪", "天気"]]
     bm25 = search._MiniBM25(corpus)

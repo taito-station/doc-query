@@ -17,18 +17,12 @@ from dataclasses import dataclass
 
 from . import tokenize as _tokenize
 
-_TOKEN_RE = re.compile(
-    r"[A-Za-z0-9_]+|["
-    + "".join(f"{low}-{high}" for low, high in _tokenize.CJK_CHAR_RANGES)
-    + "]"
-)
-
 # Same BM25 length-normalization value mdq settled on (FR-MDQ-06).
 LENGTH_NORM_B = 0.2
 
 
 def tokenize(text: str) -> list[str]:
-    return [t.lower() for t in _TOKEN_RE.findall(text)]
+    return _tokenize.snippet_tokens(text)
 
 
 @dataclass
