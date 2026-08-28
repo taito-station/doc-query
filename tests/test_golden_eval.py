@@ -89,13 +89,16 @@ class TestEvaluateMetrics:
 
         db = tmp_path / "index.sqlite"
         conn = store.open_store(db)
-        indexer.index_one_file(conn, tmp_path, pdf)
-        return golden_eval.evaluate(
-            conn,
-            [golden_eval.GoldenQuery(**q) for q in queries],
-            top_k=5,
-            max_tokens=800,
-        )
+        try:
+            indexer.index_one_file(conn, tmp_path, pdf)
+            return golden_eval.evaluate(
+                conn,
+                [golden_eval.GoldenQuery(**q) for q in queries],
+                top_k=5,
+                max_tokens=800,
+            )
+        finally:
+            conn.close()
 
     def test_all_correct(self, tmp_path):
         result = self._run(
@@ -153,11 +156,14 @@ class TestGenerateCorpus:
         assert len(pdfs) == 1
 
         conn = store.open_store(tmp_path / "db.sqlite")
-        indexer.index_one_file(conn, out, pdfs[0])
-        chunks = store.all_chunks(conn)
-        pages = {r["start_page"] for r in chunks}
-        assert 1 in pages
-        assert 2 in pages
+        try:
+            indexer.index_one_file(conn, out, pdfs[0])
+            chunks = store.all_chunks(conn)
+            pages = {r["start_page"] for r in chunks}
+            assert 1 in pages
+            assert 2 in pages
+        finally:
+            conn.close()
 
     def test_deterministic(self, tmp_path):
         import hashlib

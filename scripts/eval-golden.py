@@ -30,8 +30,12 @@ def _build_index(pdf_dir: Path):
     pdf_dir = pdf_dir.resolve()
     db_path = pdf_dir / "index.sqlite"
     conn = store.open_store(db_path)
-    for pdf in sorted(pdf_dir.glob("*.pdf")):
-        indexer.index_one_file(conn, pdf_dir, pdf)
+    try:
+        for pdf in sorted(pdf_dir.glob("*.pdf")):
+            indexer.index_one_file(conn, pdf_dir, pdf)
+    except Exception:
+        conn.close()
+        raise
     return conn
 
 
@@ -68,8 +72,8 @@ def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
         with open(BASELINES_PATH, encoding="utf-8") as f:
             baselines = json.load(f)
     except FileNotFoundError:
-        print("WARNING: baselines.json が無いためベースラインチェックをスキップ", file=sys.stderr)
-        return True
+        print("ERROR: baselines.json が無い", file=sys.stderr)
+        return False
 
     bl_counter = baselines.get("token_counter")
     current_counter = tokens.counter_name()
@@ -136,8 +140,9 @@ def _update_baselines(results: dict[str, golden_eval.EvalResult]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="ゴールデンクエリ回帰計測")
     parser.add_argument("--set", required=True, choices=["dev", "holdout", "all"])
-    parser.add_argument("--check-baseline", action="store_true")
-    parser.add_argument("--update-baseline", action="store_true")
+    bl_group = parser.add_mutually_exclusive_group()
+    bl_group.add_argument("--check-baseline", action="store_true")
+    bl_group.add_argument("--update-baseline", action="store_true")
     parser.add_argument("--top-k", type=int, default=5)
     args = parser.parse_args()
 

@@ -10,11 +10,6 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-from reportlab.pdfgen import canvas
-
 from . import search as _search
 from . import tokens as _tokens
 
@@ -33,6 +28,9 @@ _font_registered = False
 def _ensure_font() -> None:
     global _font_registered
     if not _font_registered:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
         pdfmetrics.registerFont(UnicodeCIDFont(_CJK_FONT))
         _font_registered = True
 
@@ -95,6 +93,8 @@ def validate_golden_set(
 
 
 def _max_draw_width() -> float:
+    from reportlab.lib.pagesizes import A4
+
     page_w, _ = A4
     return page_w - _LEFT_MARGIN - _RIGHT_MARGIN
 
@@ -104,6 +104,10 @@ def generate_corpus(corpus_dir: Path, out_dir: Path) -> list[Path]:
 
     Raises ``ValueError`` if any line exceeds the drawable width.
     """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfgen import canvas
+
     _ensure_font()
     max_w = _max_draw_width()
     generated: list[Path] = []
