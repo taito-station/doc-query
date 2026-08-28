@@ -196,12 +196,15 @@ def check_baseline(
     baseline: dict,
     *,
     epsilon: float = BASELINE_EPSILON,
-) -> list[str]:
-    """Compare result against baseline. Returns list of failure messages."""
-    failures: list[str] = []
+) -> list[tuple[str, str]]:
+    """Compare result against baseline. Returns list of (metric, message) tuples."""
+    failures: list[tuple[str, str]] = []
     for metric in ("top1", "topk", "mrr_at_k"):
         actual = getattr(result, metric)
-        expected = baseline[metric]
+        expected = baseline.get(metric)
+        if expected is None:
+            failures.append((metric, f"baseline に {metric!r} キーが無い"))
+            continue
         if actual < expected - epsilon:
-            failures.append(f"{metric}: {actual:.4f} < baseline {expected:.4f}")
+            failures.append((metric, f"{actual:.4f} < baseline {expected:.4f}"))
     return failures

@@ -219,4 +219,4 @@ class TestCheckBaseline:
         baseline = {"top1": 0.5, "topk": 0.8, "mrr_at_k": 0.6}
         failures = golden_eval.check_baseline(result, baseline)
         assert len(failures) == 1
-        assert "top1" in failures[0]
+        assert failures[0][0] == "top1"

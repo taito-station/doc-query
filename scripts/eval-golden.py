@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from docq import golden_eval, indexer, store, tokens
 from docq.golden_eval import BASELINE_EPSILON
 
+
 class _ValidationError(Exception):
     pass
 
@@ -96,17 +97,19 @@ def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
             ok = False
             continue
         failures = golden_eval.check_baseline(result, bl)
-        failed_metrics = {msg.split(":")[0] for msg in failures}
+        failed_metrics = {metric for metric, _ in failures}
         print(f"\n=== baseline check ({set_name}) ===")
         for metric in ("top1", "topk", "mrr_at_k"):
             actual = getattr(result, metric)
-            expected = bl[metric]
-            passed = metric not in failed_metrics
-            print(f"  {metric:10s}: {actual:.4f} >= {expected:.4f}  {'OK' if passed else 'FAIL'}")
+            expected = bl.get(metric)
+            if expected is not None:
+                print(f"  {metric:10s}: {actual:.4f} >= {expected:.4f}  {'OK' if metric not in failed_metrics else 'FAIL'}")
+            else:
+                print(f"  {metric:10s}: {actual:.4f}  FAIL (baseline にキー無し)")
         if failures:
             ok = False
-            for msg in failures:
-                print(f"  FAIL: {msg}", file=sys.stderr)
+            for metric, msg in failures:
+                print(f"  FAIL: {metric}: {msg}", file=sys.stderr)
     return ok
 
 
