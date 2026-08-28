@@ -227,12 +227,12 @@ def get_chunk(conn, chunk_id: str) -> dict | None:
     conn.row_factory = _sql.Row
     row = conn.execute(
         "SELECT chunk_id, path, location, start_page, end_page, token_est, "
-        "text FROM chunks WHERE chunk_id = ?",
+        "part_index, part_total, text FROM chunks WHERE chunk_id = ?",
         (chunk_id,),
     ).fetchone()
     if not row:
         return None
-    return {
+    d = {
         "chunk_id": row["chunk_id"],
         "path": row["path"],
         "location": row["location"],
@@ -240,25 +240,33 @@ def get_chunk(conn, chunk_id: str) -> dict | None:
         "token_est": row["token_est"],
         "text": row["text"],
     }
+    if row["part_total"] > 1:
+        d["part"] = [row["part_index"], row["part_total"]]
+    return d
 
 
 def list_chunks(conn, path_globs: list[str] | None = None,
                  limit: int = 200) -> list[dict]:
     import sqlite3 as _sql
     conn.row_factory = _sql.Row
-    rows = list(conn.execute(
-        "SELECT path, location, start_page, end_page FROM chunks "
-        "ORDER BY path, start_page"
-    ))
+    rows = conn.execute(
+        "SELECT chunk_id, path, location, start_page, end_page, "
+        "part_index, part_total FROM chunks "
+        "ORDER BY path, start_page, part_index"
+    )
     out = []
     for r in rows:
         if path_globs and not _path_matches(r["path"], path_globs):
             continue
-        out.append({
+        d = {
+            "chunk_id": r["chunk_id"],
             "path": r["path"],
             "location": r["location"],
             "pages": [r["start_page"], r["end_page"]],
-        })
+        }
+        if r["part_total"] > 1:
+            d["part"] = [r["part_index"], r["part_total"]]
+        out.append(d)
         if len(out) >= limit:
             break
     return out

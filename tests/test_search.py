@@ -66,6 +66,27 @@ def test_get_chunk_missing_returns_none(tmp_path, sample_pdf):
     assert search.get_chunk(conn, "does-not-exist") is None
 
 
+def test_get_chunk_omits_part_for_single_window(tmp_path, sample_pdf):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    hits = search.search(conn, "東京", top_k=1, max_tokens=800)
+    chunk = search.get_chunk(conn, hits[0].chunk_id)
+    assert chunk is not None
+    assert "part" not in chunk
+
+
+def test_list_chunks_includes_chunk_id(tmp_path, sample_pdf):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    chunks = search.list_chunks(conn)
+    assert chunks
+    assert all("chunk_id" in c and c["chunk_id"] for c in chunks)
+
+
+def test_list_chunks_respects_limit(tmp_path, sample_pdf):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    chunks = search.list_chunks(conn, limit=1)
+    assert len(chunks) == 1
+
+
 def test_empty_query_returns_no_hits(tmp_path, sample_pdf):
     """The empty string is the case that matters.
 
