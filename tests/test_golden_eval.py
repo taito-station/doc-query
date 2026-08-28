@@ -220,3 +220,13 @@ class TestCheckBaseline:
         failures = golden_eval.check_baseline(result, baseline)
         assert len(failures) == 1
         assert failures[0][0] == "top1"
+
+    def test_missing_key_fails(self):
+        result = golden_eval.EvalResult(
+            top1=0.5, topk=0.8, mrr_at_k=0.6,
+            total_queries=10, token_counter="x", details=[],
+        )
+        baseline = {"top1": 0.5, "topk": 0.8}
+        failures = golden_eval.check_baseline(result, baseline)
+        assert len(failures) == 1
+        assert failures[0][0] == "mrr_at_k"

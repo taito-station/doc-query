@@ -144,7 +144,7 @@ def _update_baselines(results: dict[str, golden_eval.EvalResult]) -> None:
     with open(BASELINES_PATH, "w", encoding="utf-8") as f:
         json.dump(baselines, f, indent=2, ensure_ascii=False)
         f.write("\n")
-    print(f"\nbaselines.json を更新しました")
+    print("\nbaselines.json を更新しました")
 
 
 def main() -> int:
