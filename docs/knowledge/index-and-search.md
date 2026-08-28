@@ -149,11 +149,11 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-003 | 返却単位は `line` / `chunk` / `locations` を呼び出し側が選べ、既定は `line` とする。指定が無いときに他へ切り替えない | `tests/test_search.py::test_search_returns_snippet_by_default` / `::test_search_return_unit_locations_has_no_snippet` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-004 | 応答トークン予算の見積りは、返却する 1 ヒット分の JSON 全体に対して行う。snippet 本文の長さだけで見積もらない | `tests/test_search.py::test_budget_cost_covers_full_json_not_just_snippet` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-005 | スコアリング語彙は、連続する CJK を隣接 bigram、単独 CJK は 1 文字、ASCII 英数の連なりは分割しない | `tests/test_tokenize.py::test_cjk_sequence_yields_bigrams` / `::test_single_cjk_yields_itself` / `::test_ascii_run_kept_whole_and_lowered` / `::test_mixed_cjk_ascii` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
-| REQ-D19-006 | スコアリング語彙の生成前に NFKC 正規化を適用する。全角英数・ローマ数字・全角記号が語として残り、`指定席Ａ` と `指定席Ｓ` が同一クエリにならない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
-| REQ-D19-007 | 正規化は照合のためだけに用い、返す snippet 本文とページ範囲へ影響させない | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
+| REQ-D19-006 | スコアリング語彙の生成前に NFKC 正規化を適用する。全角英数・ローマ数字・全角記号が語として残り、`指定席Ａ` と `指定席Ｓ` が同一クエリにならない | `tests/test_tokenize.py::test_nfkc_fullwidth_alpha` / `::test_nfkc_fullwidth_digits` / `::test_nfkc_roman_numeral` / `::test_nfkc_different_fullwidth_produce_different_terms` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D19-007 | 正規化は照合のためだけに用い、返す snippet 本文とページ範囲へ影響させない | `tests/test_search.py::test_snippet_preserves_original_text` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-008 | grep モードは生の本文だけを照合し、スコアリング規約（bigram / 正規化）の対象外とする | `tests/test_search.py::test_grep_mode_matches_raw_text_not_scoring_terms` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-009 | クエリからスコアリング語が 1 つも得られないときに限り grep へフォールバックする。空クエリはフォールバックせず 0 件を返す | `tests/test_search.py::test_empty_query_returns_no_hits` / `::test_query_with_no_scoring_terms_falls_back_to_grep` / `::test_query_with_scoring_terms_stays_in_bm25` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
-| REQ-D19-010 | snippet 選定のトークナイザとスコアリング語彙は、同一の文字クラス定義と同一の正規化を共有し、片方だけ変更できない構造とする | 未整備 | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Tentative |
+| REQ-D19-010 | snippet 選定のトークナイザとスコアリング語彙は、同一の文字クラス定義と同一の正規化を共有し、片方だけ変更できない構造とする | `tests/test_tokenize.py::test_snippet_tokens_shares_normalization`（`normalize()` と `CJK_CHAR_RANGES` を `tokenize.py` に集約し、`search.tokenize()` は `snippet_tokens()` に委譲） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-011 | 索引キーは基準ディレクトリからの相対パスとし、基準を索引に記録する。異なる基準からの書き込みは拒否する。読み取りは拒否しない | `tests/test_indexer.py::test_index_paths_refuses_a_store_bound_to_another_base_dir` / `tests/test_cli.py::test_index_from_another_directory_is_refused_but_search_is_not` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-012 | prune の対象は、今回スキャンした root 配下にあり、かつディスク上に無いことを確認できたエントリに限る。走査で見つからなかったことを削除の根拠にしない | `tests/test_indexer.py::test_index_paths_does_not_prune_files_under_other_roots` / `::test_index_paths_keeps_entries_it_cannot_verify` / `::test_index_paths_prunes_a_symlink_whose_target_is_gone` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-013 | 走査が読めなかったディレクトリ・ファイルは無言でスキップせず報告する。索引できない状態と空のディレクトリを区別できるようにする | `tests/test_indexer.py::test_index_paths_reports_an_unreadable_root` / `::test_index_paths_reports_a_directory_it_cannot_read` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
@@ -169,7 +169,6 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 
 | 要件 | 種別 | 解消の道筋 |
 |---|---|---|
-| D19-006 / 007 / 010 | **未実装**（[#2](https://github.com/taito-station/doc-query/issues/2)） | 回帰計測のベースライン取得後に NFKC を入れる |
 | D19-016 | **未実装** | 下記 |
 
 **REQ-D19-016 は実装ギャップの可視化。** バージョンは記録しているが照合していない（`open_store` は
