@@ -249,24 +249,27 @@ def list_chunks(conn, path_globs: list[str] | None = None,
                  limit: int = 200) -> list[dict]:
     import sqlite3 as _sql
     conn.row_factory = _sql.Row
-    rows = conn.execute(
+    cursor = conn.execute(
         "SELECT chunk_id, path, location, start_page, end_page, "
         "part_index, part_total FROM chunks "
         "ORDER BY path, start_page, part_index"
     )
     out = []
-    for r in rows:
-        if path_globs and not _path_matches(r["path"], path_globs):
-            continue
-        d = {
-            "chunk_id": r["chunk_id"],
-            "path": r["path"],
-            "location": r["location"],
-            "pages": [r["start_page"], r["end_page"]],
-        }
-        if r["part_total"] > 1:
-            d["part"] = [r["part_index"], r["part_total"]]
-        out.append(d)
-        if len(out) >= limit:
-            break
+    try:
+        for r in cursor:
+            if path_globs and not _path_matches(r["path"], path_globs):
+                continue
+            d = {
+                "chunk_id": r["chunk_id"],
+                "path": r["path"],
+                "location": r["location"],
+                "pages": [r["start_page"], r["end_page"]],
+            }
+            if r["part_total"] > 1:
+                d["part"] = [r["part_index"], r["part_total"]]
+            out.append(d)
+            if len(out) >= limit:
+                break
+    finally:
+        cursor.close()
     return out
