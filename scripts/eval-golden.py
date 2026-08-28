@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from docq import golden_eval, indexer, store, tokens
+from docq.golden_eval import BASELINE_EPSILON
 
 EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
 CORPUS_DIR = EVAL_DIR / "corpus"
@@ -63,12 +64,12 @@ def _run_set(conn, set_name: str, top_k: int, show_details: bool) -> golden_eval
 
 
 def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
-    if not BASELINES_PATH.exists():
+    try:
+        with open(BASELINES_PATH, encoding="utf-8") as f:
+            baselines = json.load(f)
+    except FileNotFoundError:
         print("WARNING: baselines.json が無いためベースラインチェックをスキップ", file=sys.stderr)
         return True
-
-    with open(BASELINES_PATH, encoding="utf-8") as f:
-        baselines = json.load(f)
 
     bl_counter = baselines.get("token_counter")
     current_counter = tokens.counter_name()
@@ -89,7 +90,7 @@ def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
         for metric in ("top1", "topk", "mrr_at_k"):
             actual = getattr(result, metric)
             expected = bl[metric]
-            passed = actual >= expected - 1e-9
+            passed = actual >= expected - BASELINE_EPSILON
             print(f"  {metric:10s}: {actual:.4f} >= {expected:.4f}  {'OK' if passed else 'FAIL'}")
         if failures:
             ok = False
@@ -99,10 +100,10 @@ def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
 
 
 def _update_baselines(results: dict[str, golden_eval.EvalResult]) -> None:
-    if BASELINES_PATH.exists():
+    try:
         with open(BASELINES_PATH, encoding="utf-8") as f:
             baselines = json.load(f)
-    else:
+    except FileNotFoundError:
         baselines = {"format_version": 1}
 
     baselines["token_counter"] = tokens.counter_name()
@@ -114,7 +115,7 @@ def _update_baselines(results: dict[str, golden_eval.EvalResult]) -> None:
         for metric in ("top1", "topk", "mrr_at_k"):
             new_val = getattr(result, metric)
             old_val = old.get(metric)
-            if old_val is not None and new_val < old_val - 1e-9:
+            if old_val is not None and new_val < old_val - BASELINE_EPSILON:
                 warn_parts.append(f"{metric}: {old_val:.4f} -> {new_val:.4f}")
         if warn_parts:
             print(f"WARNING ({set_name}): ベースラインが下がります: {', '.join(warn_parts)}")
@@ -146,11 +147,13 @@ def main() -> int:
         tmp_path = Path(tmp)
         golden_eval.generate_corpus(CORPUS_DIR, tmp_path)
         conn = _build_index(tmp_path)
-
-        results: dict[str, golden_eval.EvalResult] = {}
-        for s in sets:
-            show_details = s == "dev"
-            results[s] = _run_set(conn, s, args.top_k, show_details)
+        try:
+            results: dict[str, golden_eval.EvalResult] = {}
+            for s in sets:
+                show_details = s == "dev"
+                results[s] = _run_set(conn, s, args.top_k, show_details)
+        finally:
+            conn.close()
 
     if args.update_baseline:
         _update_baselines(results)

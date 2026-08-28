@@ -66,7 +66,7 @@ fi
 if PY=$(py_with reportlab); then
     if [ -f scripts/eval-golden.py ]; then
         echo "==> ゴールデンクエリの回帰計測"
-        "$PY" scripts/eval-golden.py --set dev --check-baseline
+        "$PY" scripts/eval-golden.py --set all --check-baseline
     else
         # 飛ばしたことを黙らせない。スクリプトの改名・削除で計測が消えても
         # 気づけなくなる。

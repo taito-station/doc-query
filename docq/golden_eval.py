@@ -6,6 +6,7 @@ The CLI script (``scripts/eval-golden.py``) is a thin wrapper.
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,9 +15,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfgen import canvas
 
-from . import indexer as _indexer
 from . import search as _search
-from . import store as _store
 from . import tokens as _tokens
 
 _CJK_FONT = "HeiseiMin-W3"
@@ -26,6 +25,7 @@ _LEFT_MARGIN = 72
 _RIGHT_MARGIN = 72
 _TOP_Y = 800
 _LINE_STEP = 14
+BASELINE_EPSILON = 1e-9
 
 _font_registered = False
 
@@ -85,7 +85,7 @@ def validate_golden_set(
             errors.append(f"[{q.anchor}] expected_path {q.expected_path!r} がコーパスに無い")
             continue
         text = corpus_texts[q.expected_path]
-        n_pages = text.count(_PAGE_SEP) + 1
+        n_pages = len(text.split(f"\n{_PAGE_SEP}\n"))
         if q.expected_page < 1 or q.expected_page > n_pages:
             errors.append(
                 f"[{q.anchor}] expected_page={q.expected_page} がページ数 {n_pages} を超えている"
@@ -149,7 +149,7 @@ def corpus_text_map(corpus_dir: Path) -> dict[str, str]:
 
 
 def evaluate(
-    conn,
+    conn: sqlite3.Connection,
     queries: list[GoldenQuery],
     *,
     top_k: int = 5,
@@ -191,7 +191,7 @@ def check_baseline(
     result: EvalResult,
     baseline: dict,
     *,
-    epsilon: float = 1e-9,
+    epsilon: float = BASELINE_EPSILON,
 ) -> list[str]:
     """Compare result against baseline. Returns list of failure messages."""
     failures: list[str] = []

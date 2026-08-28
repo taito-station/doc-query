@@ -105,7 +105,7 @@ updated: "2026-08-24"
 | REQ-D17-003 | 正解判定の実装は 1 つとし、計測スクリプト側で再実装しない | `tests/test_golden_eval.py::TestIsCorrect`（`is_correct` が唯一の実装。`scripts/eval-golden.py` は呼ぶだけ） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D17-004 | ゴールデン集に実在しないコーパス・ページ、または一意でない anchor が含まれる場合は計測を実行せず失敗する | `tests/test_golden_eval.py::TestValidateGoldenSet` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D17-005 | 評価コーパスは生成物とし、生成元テキストのみをコミットする。生成は決定的で、描画幅を超える行があれば生成時に失敗する | `tests/test_golden_eval.py::TestGenerateCorpus` | [QA-doc-flow-introduction.md](../qa/QA-doc-flow-introduction.md) | Confirmed |
-| REQ-D17-006 | ランキングに影響する既定値（BM25 定数 / 語彙単位 / 正規化 / フォールバック条件）の変更は、開発用集とホールドアウト集の双方で記録済みベースラインを下回らないことを確認する | `scripts/eval-golden.py --check-baseline`（pre-push フックが `--set dev` で実行） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D17-006 | ランキングに影響する既定値（BM25 定数 / 語彙単位 / 正規化 / フォールバック条件）の変更は、開発用集とホールドアウト集の双方で記録済みベースラインを下回らないことを確認する | `scripts/eval-golden.py --check-baseline`（pre-push フックが `--set all` で実行） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D17-007 | 計測はトークンカウンタ名を記録し、ベースラインと異なるカウンタでの比較は実行せず失敗する | `tests/test_golden_eval.py::TestEvaluateMetrics::test_token_counter_recorded` + `scripts/eval-golden.py` のカウンタ不一致チェック | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 <!-- REQ:end D17 -->
 
