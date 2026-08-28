@@ -9,7 +9,7 @@ sources:
   - docq/store.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "a539394"
+distilled_from_sha: "c5d0545"
 updated: "2026-08-27"
 ---
 
