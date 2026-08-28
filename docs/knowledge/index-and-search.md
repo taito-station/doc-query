@@ -7,6 +7,7 @@ sources:
   - docq/indexer.py
   - docq/search.py
   - docq/store.py
+  - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "c5d0545"
@@ -153,7 +154,7 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-007 | 正規化は照合のためだけに用い、返す snippet 本文とページ範囲へ影響させない | `tests/test_search.py::test_snippet_preserves_original_text` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-008 | grep モードは生の本文だけを照合し、スコアリング規約（bigram / 正規化）の対象外とする | `tests/test_search.py::test_grep_mode_matches_raw_text_not_scoring_terms` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-009 | クエリからスコアリング語が 1 つも得られないときに限り grep へフォールバックする。空クエリはフォールバックせず 0 件を返す | `tests/test_search.py::test_empty_query_returns_no_hits` / `::test_query_with_no_scoring_terms_falls_back_to_grep` / `::test_query_with_scoring_terms_stays_in_bm25` | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
-| REQ-D19-010 | snippet 選定のトークナイザとスコアリング語彙は、同一の文字クラス定義と同一の正規化を共有し、片方だけ変更できない構造とする | `tests/test_tokenize.py::test_snippet_tokens_shares_normalization`（`normalize()` と `CJK_CHAR_RANGES` を `tokenize.py` に集約し、`search.tokenize()` は `snippet_tokens()` に委譲） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
+| REQ-D19-010 | snippet 選定のトークナイザとスコアリング語彙は、同一の文字クラス定義と同一の正規化を共有し、片方だけ変更できない構造とする | `tests/test_tokenize.py::test_snippet_tokens_normalizes_fullwidth`（`normalize()` と `CJK_CHAR_RANGES` を `tokenize.py` に集約し、`search.tokenize()` は `snippet_tokens()` に委譲） | [2-fullwidth-scoring-defect.md](../original-docs/2-fullwidth-scoring-defect.md) | Confirmed |
 | REQ-D19-011 | 索引キーは基準ディレクトリからの相対パスとし、基準を索引に記録する。異なる基準からの書き込みは拒否する。読み取りは拒否しない | `tests/test_indexer.py::test_index_paths_refuses_a_store_bound_to_another_base_dir` / `tests/test_cli.py::test_index_from_another_directory_is_refused_but_search_is_not` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-012 | prune の対象は、今回スキャンした root 配下にあり、かつディスク上に無いことを確認できたエントリに限る。走査で見つからなかったことを削除の根拠にしない | `tests/test_indexer.py::test_index_paths_does_not_prune_files_under_other_roots` / `::test_index_paths_keeps_entries_it_cannot_verify` / `::test_index_paths_prunes_a_symlink_whose_target_is_gone` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-013 | 走査が読めなかったディレクトリ・ファイルは無言でスキップせず報告する。索引できない状態と空のディレクトリを区別できるようにする | `tests/test_indexer.py::test_index_paths_reports_an_unreadable_root` / `::test_index_paths_reports_a_directory_it_cannot_read` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |

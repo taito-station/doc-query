@@ -37,6 +37,6 @@ def test_nfkc_different_fullwidth_produce_different_terms():
     assert "s" in terms_s
 
 
-def test_snippet_tokens_shares_normalization():
+def test_snippet_tokens_normalizes_fullwidth():
     tokens = snippet_tokens("指定席Ａ")
     assert tokens == ["指", "定", "席", "a"]
