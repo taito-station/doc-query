@@ -21,6 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from docq import golden_eval, indexer, store, tokens
 from docq.golden_eval import BASELINE_EPSILON
 
+class _ValidationError(Exception):
+    pass
+
+
 EVAL_DIR = Path(__file__).resolve().parent.parent / "eval"
 CORPUS_DIR = EVAL_DIR / "corpus"
 BASELINES_PATH = EVAL_DIR / "baselines.json"
@@ -46,10 +50,10 @@ def _run_set(conn, set_name: str, top_k: int, show_details: bool) -> golden_eval
     corpus_texts = golden_eval.corpus_text_map(CORPUS_DIR)
     errors = golden_eval.validate_golden_set(queries, corpus_texts)
     if errors:
-        print(f"ERROR: ゴールデン集の検証に失敗 ({set_name}):", file=sys.stderr)
+        lines = [f"ゴールデン集の検証に失敗 ({set_name}):"]
         for e in errors:
-            print(f"  {e}", file=sys.stderr)
-        sys.exit(1)
+            lines.append(f"  {e}")
+        raise _ValidationError("\n".join(lines))
 
     result = golden_eval.evaluate(conn, queries, top_k=top_k)
 
@@ -88,18 +92,21 @@ def _check_baselines(results: dict[str, golden_eval.EvalResult]) -> bool:
     for set_name, result in results.items():
         bl = baselines.get(set_name)
         if bl is None:
+            print(f"ERROR: baselines.json に {set_name!r} のエントリが無い", file=sys.stderr)
+            ok = False
             continue
         failures = golden_eval.check_baseline(result, bl)
+        failed_metrics = {msg.split(":")[0] for msg in failures}
         print(f"\n=== baseline check ({set_name}) ===")
         for metric in ("top1", "topk", "mrr_at_k"):
             actual = getattr(result, metric)
             expected = bl[metric]
-            passed = actual >= expected - BASELINE_EPSILON
+            passed = metric not in failed_metrics
             print(f"  {metric:10s}: {actual:.4f} >= {expected:.4f}  {'OK' if passed else 'FAIL'}")
         if failures:
             ok = False
-            for f in failures:
-                print(f"  FAIL: {f}", file=sys.stderr)
+            for msg in failures:
+                print(f"  FAIL: {msg}", file=sys.stderr)
     return ok
 
 
@@ -157,6 +164,9 @@ def main() -> int:
             for s in sets:
                 show_details = s == "dev"
                 results[s] = _run_set(conn, s, args.top_k, show_details)
+        except _ValidationError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
         finally:
             conn.close()
 
