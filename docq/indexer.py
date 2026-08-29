@@ -26,7 +26,7 @@ PDF_SUFFIX = ".pdf"
 
 class IndexResult(NamedTuple):
     chunks: int
-    status: str  # "indexed" | "skipped" | "no_text"
+    status: Literal["indexed", "skipped", "no_text"]
 
 
 @dataclass
@@ -305,14 +305,19 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             elif result.status == "no_text":
                 stats.no_text += 1
                 stats.no_text_files.append(rel)
-            else:
+            elif result.status == "skipped":
                 stats.skipped += 1
+            else:
+                raise ValueError(f"unexpected IndexResult status: {result.status!r}")
 
     if stats.no_text:
+        names = stats.no_text_files[:10]
+        if len(stats.no_text_files) > 10:
+            names.append(f"... and {len(stats.no_text_files) - 10} more")
         stats.warnings.append(
             f"{stats.no_text} file(s) contained no extractable text "
             f"(scanned/image-only PDF — OCR is not supported): "
-            + ", ".join(stats.no_text_files)
+            + ", ".join(names)
         )
 
     if prune:

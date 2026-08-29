@@ -75,15 +75,6 @@ def test_no_text_pdf_counted_separately(tmp_path, blank_pdf):
     assert any("blank" in f for f in stats.no_text_files)
 
 
-def test_no_text_pdf_index_one_file_returns_no_text(tmp_path, blank_pdf):
-    """index_one_file は空 PDF に対して status='no_text' を返す。"""
-    conn = store.open_store(tmp_path / "index.sqlite")
-    result = indexer.index_one_file(conn, tmp_path, blank_pdf)
-    conn.commit()
-    assert result.chunks == 0
-    assert result.status == "no_text"
-
-
 def test_index_paths_prunes_removed_files(tmp_path, sample_pdf):
     docs = tmp_path / "docs"
     docs.mkdir()
