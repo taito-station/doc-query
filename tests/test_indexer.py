@@ -484,3 +484,22 @@ def test_index_paths_matches_uppercase_suffix(tmp_path, sample_pdf):
     stats = indexer.index_paths(conn, tmp_path, [docs])
 
     assert stats.indexed == 1
+
+
+def test_open_store_creates_gitignore(tmp_path):
+    """open_store は .gitignore を自動生成する。"""
+    db = tmp_path / ".docq" / "index.sqlite"
+    store.open_store(db)
+    gitignore = tmp_path / ".docq" / ".gitignore"
+    assert gitignore.exists()
+    assert "*" in gitignore.read_text(encoding="utf-8")
+
+
+def test_open_store_does_not_overwrite_existing_gitignore(tmp_path):
+    """既存の .gitignore は上書きしない。"""
+    docq_dir = tmp_path / ".docq"
+    docq_dir.mkdir()
+    gitignore = docq_dir / ".gitignore"
+    gitignore.write_text("custom\n", encoding="utf-8")
+    store.open_store(docq_dir / "index.sqlite")
+    assert gitignore.read_text(encoding="utf-8") == "custom\n"
