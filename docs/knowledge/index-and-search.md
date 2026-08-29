@@ -11,7 +11,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "eafa1d9"
-updated: "2026-08-27"
+updated: "2026-08-29"
 ---
 
 # 索引と検索
