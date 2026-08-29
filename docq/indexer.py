@@ -12,7 +12,7 @@ import os
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from . import extractor_pdf as _extractor
 from . import store as _store
@@ -24,11 +24,18 @@ FIXED_WINDOW_OVERLAP = 200
 PDF_SUFFIX = ".pdf"
 
 
+class IndexResult(NamedTuple):
+    chunks: int
+    status: str  # "indexed" | "skipped" | "no_text"
+
+
 @dataclass
 class IndexStats:
     scanned: int = 0
     indexed: int = 0
     skipped: int = 0
+    no_text: int = 0
+    no_text_files: list[str] = field(default_factory=list)
     pruned: int = 0
     chunks: int = 0
     # Errors mean the run did not do what was asked and set a non-zero exit
@@ -190,8 +197,8 @@ def _chunk_id(path: str, page: int, part_index: int) -> str:
     return hashlib.sha1(f"{path}:{page}:{part_index}".encode("utf-8")).hexdigest()
 
 
-def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
-    """Index a single PDF; returns the number of chunks written (0 if skipped).
+def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
+    """Index a single PDF. Returns IndexResult(chunks, status).
 
     Normalizes and claims `repo_root` itself rather than trusting the caller:
     this is a public entry point that writes keys, so the invariant "every
@@ -207,7 +214,7 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
     sha1 = _sha1_of_file(pdf_path)
     existing = _store.get_file_meta(conn, rel)
     if existing is not None and existing[0] == sha1:
-        return 0
+        return IndexResult(0, "skipped")
 
     # Everything that can fail for this file happens before the first write,
     # so a run whose only PDFs are unreadable neither claims the store nor
@@ -247,7 +254,9 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> int:
         _store.delete_chunks_for(conn, rel)
         if rows:
             _store.insert_chunks(conn, rows)
-    return len(rows)
+    if rows:
+        return IndexResult(len(rows), "indexed")
+    return IndexResult(0, "no_text")
 
 
 def index_paths(conn, repo_root: Path, roots: list[Path], *,
@@ -282,7 +291,7 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             rel = rel_path(pdf_path, repo_root)
             seen.add(rel)
             try:
-                n = index_one_file(conn, repo_root, pdf_path)
+                result = index_one_file(conn, repo_root, pdf_path)
             except _store.BaseDirMismatch:
                 # A store-level invariant, not a problem with this file.
                 # Demoting it to a per-file error string would hide it.
@@ -290,11 +299,21 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             except Exception as e:  # noqa: BLE001 - surface per-file, keep scanning
                 stats.errors.append(f"{rel}: {e}")
                 continue
-            if n > 0:
+            if result.status == "indexed":
                 stats.indexed += 1
-                stats.chunks += n
+                stats.chunks += result.chunks
+            elif result.status == "no_text":
+                stats.no_text += 1
+                stats.no_text_files.append(rel)
             else:
                 stats.skipped += 1
+
+    if stats.no_text:
+        stats.warnings.append(
+            f"{stats.no_text} file(s) contained no extractable text "
+            f"(scanned/image-only PDF — OCR is not supported): "
+            + ", ".join(stats.no_text_files)
+        )
 
     if prune:
         indexed_under = {root: 0 for root in scanned_roots}
