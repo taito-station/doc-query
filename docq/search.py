@@ -97,20 +97,31 @@ class _MiniBM25:
 
 
 def _make_snippet(text: str, query_tokens: list[str], radius: int = 2,
-                   max_chars: int = 400) -> str:
+                   max_chars: int = 400, *, pattern: re.Pattern | None = None) -> str:
     """Return a compact snippet centered on the strongest matching line."""
     lines = text.splitlines()
     if not lines:
         return ""
-    qset = set(query_tokens)
+
     best_idx = 0
-    best_score = -1
-    for i, line in enumerate(lines):
-        toks = set(tokenize(line))
-        score = len(toks & qset)
-        if score > best_score:
-            best_score = score
-            best_idx = i
+
+    if pattern is not None:
+        # grep モード: 正規表現マッチのある最初の行を中心にする
+        for i, line in enumerate(lines):
+            if pattern.search(line):
+                best_idx = i
+                break
+    else:
+        # BM25 モード: トークン重複が最大の行を中心にする
+        qset = set(query_tokens)
+        best_score = -1
+        for i, line in enumerate(lines):
+            toks = set(tokenize(line))
+            score = len(toks & qset)
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
     lo = max(0, best_idx - radius)
     hi = min(len(lines), best_idx + radius + 1)
     snippet = "\n".join(lines[lo:hi])
@@ -120,12 +131,12 @@ def _make_snippet(text: str, query_tokens: list[str], radius: int = 2,
 
 
 def _excerpt(text: str, query_tokens: list[str], radius: int,
-             return_unit: str) -> str | None:
+             return_unit: str, *, pattern: re.Pattern | None = None) -> str | None:
     if return_unit == "locations":
         return None
     if return_unit == "chunk":
         return text
-    return _make_snippet(text, query_tokens, radius=radius)
+    return _make_snippet(text, query_tokens, radius=radius, pattern=pattern)
 
 
 def _path_matches(path: str, globs: list[str]) -> bool:
@@ -182,11 +193,12 @@ def search(conn, query: str, *, mode: str = "bm25",
 
     q_tokens = tokenize(query)
 
+    grep_pat: re.Pattern | None = None
     if mode == "grep" or not q_tokens:
-        pat = re.compile(re.escape(query), re.IGNORECASE)
+        grep_pat = re.compile(re.escape(query), re.IGNORECASE)
         scored = []
         for r in rows:
-            n = len(pat.findall(r["text"]))
+            n = len(grep_pat.findall(r["text"]))
             if n > 0:
                 scored.append((float(n), r))
         _sort_scored(scored)
@@ -201,7 +213,8 @@ def search(conn, query: str, *, mode: str = "bm25",
     hits: list[Hit] = []
     spent = 0
     for score, r in scored[: max(top_k * 6, top_k)]:
-        snippet = _excerpt(r["text"], q_tokens, snippet_radius, return_unit)
+        snippet = _excerpt(r["text"], q_tokens, snippet_radius, return_unit,
+                            pattern=grep_pat)
         candidate = Hit(
             chunk_id=r["chunk_id"],
             path=r["path"],

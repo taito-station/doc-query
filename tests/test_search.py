@@ -214,3 +214,73 @@ def test_minibm25_default_b_equals_length_norm_b():
     corpus = [["東京", "天気"], ["大阪", "天気"]]
     bm25 = search._MiniBM25(corpus)
     assert bm25.b == search.LENGTH_NORM_B
+
+
+def test_grep_snippet_centers_on_match_line(tmp_path):
+    """grep モードのスニペットは正規表現のマッチ行を中心にする。
+
+    行0はトークン重複スコアでは正規表現マッチ行（行7）と同点になるが、
+    実際に "ERROR-042" の文字列を含むのは行7だけ。トークン重複だけで中心行を
+    決めると、同点の場合は先勝ちで行0が選ばれてしまう（Issue #6 のバグ）。
+    """
+    conn = store.open_store(tmp_path / "index.sqlite")
+    path = "grep.pdf"
+    lines = [
+        "error occurred here 042 times before",
+        "filler line one",
+        "filler line two",
+        "filler line three",
+        "filler line four",
+        "filler line five",
+        "filler line six",
+        "critical failure ERROR-042 detected",
+        "filler line eight",
+        "filler line nine",
+    ]
+    text = "\n".join(lines)
+    store.upsert_file(conn, path, sha1="abc123", mtime=0.0, size_bytes=100)
+    store.insert_chunks(conn, [
+        ("grep-0", path, "p.1", 1, 1, 50, text, 0, 1),
+    ])
+
+    hits = search.search(conn, "ERROR-042", top_k=5, max_tokens=800, mode="grep")
+
+    assert hits
+    assert "ERROR-042" in hits[0].snippet
+    assert "critical failure" in hits[0].snippet
+    assert "error occurred here" not in hits[0].snippet
+
+
+def test_grep_snippet_symbol_query_centers_on_match(tmp_path):
+    """記号のみクエリ（q_tokens が空）でもマッチ行を中心にする。
+
+    "::" はトークナイズすると空リストになるため、旧実装ではトークン重複
+    スコアが全行 0 になり best_idx が常に 0（行0）に固定されていた。
+    """
+    conn = store.open_store(tmp_path / "index.sqlite")
+    assert search.tokenize("::") == [], "precondition: tokenize() returns no terms"
+
+    path = "symbol.pdf"
+    lines = [
+        "no colons here at all",
+        "filler line one",
+        "filler line two",
+        "filler line three",
+        "filler line four",
+        "filler line five",
+        "filler line six",
+        "namespace foo::bar defined",
+        "filler line eight",
+        "filler line nine",
+    ]
+    text = "\n".join(lines)
+    store.upsert_file(conn, path, sha1="def456", mtime=0.0, size_bytes=100)
+    store.insert_chunks(conn, [
+        ("symbol-0", path, "p.1", 1, 1, 50, text, 0, 1),
+    ])
+
+    hits = search.search(conn, "::", top_k=5, max_tokens=800)
+
+    assert hits
+    assert "foo::bar" in hits[0].snippet
+    assert "no colons here" not in hits[0].snippet

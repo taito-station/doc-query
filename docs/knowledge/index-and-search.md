@@ -10,7 +10,7 @@ sources:
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "7b8b5b4"
+distilled_from_sha: "e22d8b6"
 updated: "2026-08-29"
 ---
 
@@ -112,8 +112,12 @@ REQ-D19-017 を充足した。
 
 ### snippet の選定
 
-**スコアリング語彙とは別のトークナイザ**（`search.tokenize`、より粗い）でクエリを分割し、一致語が最も
-多い行を中心に `--snippet-radius` 行の窓を返す。
+**BM25 経路**では、スコアリング語彙とは別のトークナイザ（`search.tokenize`、より粗い）でクエリを分割し、
+一致語が最も多い行を中心に `--snippet-radius` 行の窓を返す。
+
+**grep 経路**では、正規表現パターンにマッチした最初の行を中心にする。grep に来るクエリは `q_tokens` が
+空（スコアリング語が取れなかった）なので、トークン重複による中心行選定が機能しない。パターンマッチを
+使うことで、実際にヒットした箇所をスニペットに含める。
 
 **2 つのトークナイザがあることが今回の欠陥の温床になっている。** 文字クラスの定義が `tokenize.py` と
 `search.py` に重複しており、片方だけ直す事故が起きうる（REQ-D19-010）。
