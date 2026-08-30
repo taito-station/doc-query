@@ -149,6 +149,19 @@ def test_warnings_are_reported_without_failing_the_run(tmp_path, sample_pdf,
     assert out["pruned"] == 0
 
 
+def test_index_reports_no_text(tmp_path, blank_pdf, monkeypatch, capsys):
+    """CLI の index 出力に no_text が含まれる。"""
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["index"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["no_text"] == 1
+    assert out["skipped"] == 0
+    assert any("blank" in f for f in out["no_text_files"])
+    assert out["warnings"]
+
+
 def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 

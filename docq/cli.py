@@ -35,6 +35,8 @@ def cmd_index(args: argparse.Namespace) -> int:
         "scanned": stats.scanned,
         "indexed": stats.indexed,
         "skipped": stats.skipped,
+        "no_text": stats.no_text,
+        "no_text_files": stats.no_text_files,
         "pruned": stats.pruned,
         "chunks": stats.chunks,
         "errors": stats.errors,

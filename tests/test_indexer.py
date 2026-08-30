@@ -39,8 +39,9 @@ def test_windows_short_text_single_window():
 
 def test_index_one_file_creates_chunks_per_page(tmp_path, sample_pdf):
     conn = store.open_store(tmp_path / "index.sqlite")
-    n = indexer.index_one_file(conn, tmp_path, sample_pdf)
-    assert n > 0
+    result = indexer.index_one_file(conn, tmp_path, sample_pdf)
+    assert result.chunks > 0
+    assert result.status == "indexed"
     rows = store.all_chunks(conn)
     pages = {r["start_page"] for r in rows}
     assert pages == {1, 2}
@@ -50,16 +51,28 @@ def test_index_one_file_skips_unchanged_file(tmp_path, sample_pdf):
     conn = store.open_store(tmp_path / "index.sqlite")
     first = indexer.index_one_file(conn, tmp_path, sample_pdf)
     second = indexer.index_one_file(conn, tmp_path, sample_pdf)
-    assert first > 0
-    assert second == 0
+    assert first.chunks > 0
+    assert first.status == "indexed"
+    assert second.chunks == 0
+    assert second.status == "skipped"
 
 
 def test_index_one_file_skips_blank_pages(tmp_path, blank_pdf):
     conn = store.open_store(tmp_path / "index.sqlite")
-    n = indexer.index_one_file(conn, tmp_path, blank_pdf)
-    assert n == 0
+    result = indexer.index_one_file(conn, tmp_path, blank_pdf)
+    assert result.chunks == 0
+    assert result.status == "no_text"
     # file is still registered so re-indexing without changes is a no-op scan
     assert store.get_file_meta(conn, "blank.pdf") is not None
+
+
+def test_no_text_pdf_counted_separately(tmp_path, blank_pdf):
+    """テキストレイヤー無し PDF は skipped ではなく no_text に計上される。"""
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [tmp_path])
+    assert stats.no_text == 1
+    assert stats.skipped == 0
+    assert any("blank" in f for f in stats.no_text_files)
 
 
 def test_index_paths_prunes_removed_files(tmp_path, sample_pdf):
@@ -346,7 +359,7 @@ def test_index_one_file_leaves_no_partial_write_behind(tmp_path, sample_pdf,
     assert store.get_meta(conn, store.BASE_DIR_KEY) is None
 
     monkeypatch.undo()
-    assert indexer.index_one_file(conn, tmp_path, sample_pdf) > 0
+    assert indexer.index_one_file(conn, tmp_path, sample_pdf).chunks > 0
 
 
 def _raise_disk_full(*_args, **_kwargs):
