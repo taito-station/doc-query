@@ -137,6 +137,11 @@ def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open (or create) the SQLite store."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(db_path.parent / ".gitignore", "x", encoding="utf-8") as f:
+            f.write("*\n")
+    except FileExistsError:
+        pass
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)
