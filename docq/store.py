@@ -148,17 +148,17 @@ def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
         pass
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON;")
-    conn.executescript(SCHEMA)
     stored = conn.execute("PRAGMA user_version").fetchone()[0]
-    if stored == 0:
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    elif stored != SCHEMA_VERSION:
+    if stored != 0 and stored != SCHEMA_VERSION:
         conn.close()
         raise SchemaMismatch(
             f"index at {db_path} has schema version {stored}, but this "
             f"version of docq expects {SCHEMA_VERSION}. Delete the index "
             f"and rebuild it with `docq index`."
         )
+    conn.executescript(SCHEMA)
+    if stored == 0:
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     return conn
 

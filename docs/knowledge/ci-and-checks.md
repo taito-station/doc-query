@@ -315,4 +315,31 @@ fatal にすることで塞いだ。
   `github.event.before`（空・全 0 なら error）
 - 回帰テストの一時 git リポジトリは `GIT_CONFIG_GLOBAL=/dev/null` で利用者の設定から切り離す
 
+### #1-5: ゴールデンクエリの回帰計測を CI ジョブに追加する (2026-08-31) — 採用
+
+#### コンテキスト
+
+`scripts/eval-golden.py` と評価資産（`eval/` 配下のコーパス・ゴールデン集・ベースライン）は
+揃っていたが、CI ジョブが未作成だった。`#1-4` で「実体が無いものをジョブ表に現在形で載せない」と
+決めて「まだ無い」と明記していた状態。pre-push フックでのみ実行されており、CI での強制がなかった。
+
+#### 決定
+
+`eval` ジョブを GitHub Actions に追加する。Python 3.13 + `[tokens,dev]` で
+`scripts/eval-golden.py --set all --check-baseline` を実行し、開発用集とホールドアウト集の
+双方でベースラインを照合する。
+
+#### 理由
+
+- **pre-push は環境依存。** `reportlab` が入っていなければスキップされ、強制力がない。
+- **スクリプトと資産が揃った段階で CI に載せないと、`#1-4` で排除した「実体の無い文書化」の
+  逆——実体があるのに自動化されていない——になる。**
+- tiktoken 必須（ベースラインの `token_counter` が `tiktoken/cl100k_base`）なので、
+  tiktoken 無し経路（Python 3.10）とは別ジョブにする。
+
+#### 影響
+
+- ジョブ構成は `test` / `docs` / `eval` の 3 本になる
+- ランキングに影響する変更は CI がベースライン照合で自動検出する
+
 <!-- decision-log:end -->

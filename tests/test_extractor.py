@@ -1,3 +1,4 @@
+import pdfplumber.utils.exceptions
 import pytest
 
 from docq import extractor_pdf
@@ -19,7 +20,7 @@ def test_extract_pages_blank_page_yields_empty_string(blank_pdf):
 def test_extract_pages_raises_on_corrupt_file(tmp_path):
     bad = tmp_path / "corrupt.pdf"
     bad.write_bytes(b"this is not a pdf")
-    with pytest.raises(Exception):
+    with pytest.raises(pdfplumber.utils.exceptions.PdfminerException):
         extractor_pdf.extract_pages(bad)
 
 

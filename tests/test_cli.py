@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import sys
 
 import pytest
@@ -257,3 +258,19 @@ def test_stats_includes_last_indexed_at(tmp_path, sample_pdf, monkeypatch, capsy
     out = json.loads(capsys.readouterr().out.strip())
     assert "last_indexed_at" in out
     assert out["last_indexed_at"].endswith("+00:00")
+
+
+def test_schema_mismatch_exits_nonzero(tmp_path, monkeypatch, capsys):
+    db = tmp_path / ".docq" / "index.sqlite"
+    db.parent.mkdir(parents=True)
+    conn = sqlite3.connect(str(db))
+    conn.execute("PRAGMA user_version = 999")
+    conn.commit()
+    conn.close()
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["stats"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip())
+    assert "error" in out
+    assert "schema version 999" in out["error"]
