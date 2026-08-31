@@ -170,3 +170,90 @@ def test_index_missing_root_exits_nonzero(tmp_path, monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out.strip())
     assert out["scanned"] == 0
     assert len(out["errors"]) == 1
+
+
+def test_get_returns_chunk_by_id(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    cli.main(["search", "--q", "大阪", "--top-k", "1"])
+    hit = json.loads(capsys.readouterr().out.strip().splitlines()[0])
+    chunk_id = hit["chunk_id"]
+
+    rc = cli.main(["get", "--chunk-id", chunk_id])
+    assert rc == 0
+    chunk = json.loads(capsys.readouterr().out.strip())
+    assert chunk["chunk_id"] == chunk_id
+    assert "大阪" in chunk["text"]
+
+
+def test_get_missing_chunk_exits_nonzero(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    rc = cli.main(["get", "--chunk-id", "nonexistent"])
+    assert rc == 1
+    out = json.loads(capsys.readouterr().out.strip())
+    assert "error" in out
+
+
+def test_list_returns_all_chunks(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    rc = cli.main(["list"])
+    assert rc == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) >= 1
+    for line in lines:
+        row = json.loads(line)
+        assert "chunk_id" in row
+
+
+def test_list_respects_limit(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    rc = cli.main(["list", "--limit", "1"])
+    assert rc == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 1
+
+
+def test_stats_reports_counts(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    rc = cli.main(["stats"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert out["files"] == 1
+    assert out["chunks"] > 0
+
+
+def test_stats_includes_last_indexed_at(tmp_path, sample_pdf, monkeypatch, capsys):
+    (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    cli.main(["index"])
+    capsys.readouterr()
+
+    rc = cli.main(["stats"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert "last_indexed_at" in out
+    assert out["last_indexed_at"].endswith("+00:00")
