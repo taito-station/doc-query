@@ -366,8 +366,8 @@ def _raise_disk_full(*_args, **_kwargs):
     raise RuntimeError("database or disk is full")
 
 
-def test_open_store_keeps_an_existing_schema_version(tmp_path):
-    """The version has to survive being opened, or it records nothing."""
+def test_open_store_refuses_a_schema_version_mismatch(tmp_path):
+    """A version mismatch is detected and refused on re-open."""
     db = tmp_path / "index.sqlite"
     conn = store.open_store(db)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == store.SCHEMA_VERSION
@@ -375,8 +375,8 @@ def test_open_store_keeps_an_existing_schema_version(tmp_path):
     conn.commit()
     conn.close()
 
-    conn = store.open_store(db)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    with pytest.raises(store.SchemaMismatch, match="schema version 1"):
+        store.open_store(db)
 
 
 def test_index_one_file_refuses_a_store_bound_elsewhere(tmp_path, sample_pdf):

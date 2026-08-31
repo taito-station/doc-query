@@ -10,7 +10,7 @@ sources:
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "e22d8b6"
+distilled_from_sha: "94738c7"
 updated: "2026-08-29"
 ---
 
@@ -166,21 +166,13 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-013 | 走査が読めなかったディレクトリ・ファイルは無言でスキップせず報告する。索引できない状態と空のディレクトリを区別できるようにする | `tests/test_indexer.py::test_index_paths_reports_an_unreadable_root` / `::test_index_paths_reports_a_directory_it_cannot_read` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-014 | `index` の出力は `errors`（実行が成立しなかった。終了コード 1）と `warnings`（成立したが知っておくべきこと。終了コードに影響しない）を分ける | `tests/test_cli.py::test_warnings_are_reported_without_failing_the_run` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-015 | 1 ファイル分の索引書き込みは原子的とする。途中で失敗したファイルが「登録済みだがチャンク 0 件」として残り、以後スキップされ続けることがない | `tests/test_indexer.py::test_index_one_file_leaves_no_partial_write_behind` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
-| REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
+| REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | `tests/test_store.py::test_open_store_raises_on_schema_version_mismatch` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-017 | BM25 の文書長正規化係数は実装内の単一の値として定義する。既定値と呼び出し側で異なる値が存在してはならない | `tests/test_search.py::test_minibm25_default_b_equals_length_norm_b` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 <!-- REQ:end D19 -->
 
 ### Tentative の内訳
 
-規約上 Tentative には 2 種類あるので、どちらなのかを明記する。
-
-| 要件 | 種別 | 解消の道筋 |
-|---|---|---|
-| D19-016 | **未実装** | 下記 |
-
-**REQ-D19-016 は実装ギャップの可視化。** バージョンは記録しているが照合していない（`open_store` は
-未初期化の索引にだけ刻む）。実害は現時点で `check_base_dir` の「エントリはあるが基準が無い」判定が
-拾っているが、それは代替であって設計ではない。
+Tentative の要件は現在ない。
 
 ---
 
@@ -300,5 +292,40 @@ prune の対象を **(1) 今回スキャンした root 配下にあり、かつ 
 
 - `IndexStats` に `warnings` を追加し、終了コードは `errors` だけで決める
 - 判定不能なエントリは索引に残るので、検索結果が古い可能性がある。SKILL.md にその旨を書く
+
+### #1-4: スキーマバージョン不一致は reject + 手動再構築とする (2026-08-31) — 採用
+
+#### コンテキスト
+
+REQ-D19-016 は「索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を
+要求する」と定めていたが、実装が無かった（Tentative / 未実装）。バージョンは `PRAGMA user_version`
+に記録していたが、既存索引の照合ロジックが欠落していた。
+
+#### 決定
+
+`open_store()` で `PRAGMA user_version` を DDL 適用前に検査し、0（新規）でも
+`SCHEMA_VERSION` でもなければ `SchemaMismatch` 例外を送出する。自動マイグレーションは行わず、
+ユーザーに索引ファイルの削除と `docq index` の再実行を案内する。
+
+#### 理由
+
+- **自動マイグレーションは、マイグレーションロジック自体のテストが必要になる。** 現時点で
+  スキーマ変更は 1 回（v1→v2: meta テーブル追加）しかなく、マイグレーション基盤を整える
+  利得がない。索引は `docq index` で再構築できるので、削除で済む。
+- **DDL 適用前に検査する。** `executescript` は暗黙の commit を行うため、検査後に DDL を
+  適用しないと、不一致の DB にスキーマ変更が永続化される。
+
+#### 却下した代替案
+
+- **自動マイグレーション。** 利得に対してテストと実装のコストが見合わない。スキーマ変更が
+  頻繁になったら再検討する。
+- **警告のみで続行。** fail-open になる。古いスキーマの索引を新しいコードで読み書きすると
+  暗黙の不整合が起きる。
+
+#### 影響
+
+- REQ-D19-016 を Confirmed に昇格
+- CLI の `main()` で `SchemaMismatch` を catch し、JSON エラーと rc=1 で報告
+- DDL 適用順序を「バージョン検査 → DDL → バージョン書き込み」に変更
 
 <!-- decision-log:end -->

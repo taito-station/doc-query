@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/check-doc-classes.py
-distilled_from_sha: "a539394"
+distilled_from_sha: "c25c1e8"
 updated: "2026-08-27"
 ---
 
@@ -85,11 +85,7 @@ CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。
 |---|---|
 | `test` | Python 3.10（`[dev]` のみ＝**tiktoken 無しのフォールバック経路**）と 3.13（`[tokens,dev]`）の 2 通りで `pytest` |
 | `docs` | 検査スクリプト 3 本の回帰テスト → 本番検査 → 実物文書の混入検査 |
-
-**ゴールデンクエリの回帰計測（`eval`）はまだ無い。** `scripts/eval-golden.py` が未作成で、
-pre-push 側も「スクリプトが無い」と表示して飛ばす。計測の設計は
-[search-quality-evaluation.md](search-quality-evaluation.md) にあるが、**実体が無いものを
-ジョブ表に現在形で載せない**——文書と実体の乖離はそれ自体が fail-open（決定ログ `#1-3`）。
+| `eval` | Python 3.13 + `[tokens,dev]` でゴールデンクエリの回帰計測（`scripts/eval-golden.py --set all --check-baseline`）。ベースラインは `eval/baselines.json` に記録されたトークンカウンタと指標を照合する |
 
 **`docs` ジョブは全履歴を取得する必要がある。** stale 検査が `git log` と `merge-base` を使うので、
 shallow clone では判定できず warning に退化する——これも fail-open の一種。
@@ -318,5 +314,32 @@ fatal にすることで塞いだ。
 - CI の `run:` へ context を直接展開せず `env:` 経由にする。push の比較基準は
   `github.event.before`（空・全 0 なら error）
 - 回帰テストの一時 git リポジトリは `GIT_CONFIG_GLOBAL=/dev/null` で利用者の設定から切り離す
+
+### #1-5: ゴールデンクエリの回帰計測を CI ジョブに追加する (2026-08-31) — 採用
+
+#### コンテキスト
+
+`scripts/eval-golden.py` と評価資産（`eval/` 配下のコーパス・ゴールデン集・ベースライン）は
+揃っていたが、CI ジョブが未作成だった。`#1-4` で「実体が無いものをジョブ表に現在形で載せない」と
+決めて「まだ無い」と明記していた状態。pre-push フックでのみ実行されており、CI での強制がなかった。
+
+#### 決定
+
+`eval` ジョブを GitHub Actions に追加する。Python 3.13 + `[tokens,dev]` で
+`scripts/eval-golden.py --set all --check-baseline` を実行し、開発用集とホールドアウト集の
+双方でベースラインを照合する。
+
+#### 理由
+
+- **pre-push は環境依存。** `reportlab` が入っていなければスキップされ、強制力がない。
+- **スクリプトと資産が揃った段階で CI に載せないと、`#1-4` で排除した「実体の無い文書化」の
+  逆——実体があるのに自動化されていない——になる。**
+- tiktoken 必須（ベースラインの `token_counter` が `tiktoken/cl100k_base`）なので、
+  tiktoken 無し経路（Python 3.10）とは別ジョブにする。
+
+#### 影響
+
+- ジョブ構成は `test` / `docs` / `eval` の 3 本になる
+- ランキングに影響する変更は CI がベースライン照合で自動検出する
 
 <!-- decision-log:end -->

@@ -133,4 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except _store.SchemaMismatch as e:
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
+        return 1

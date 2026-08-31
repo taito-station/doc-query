@@ -59,6 +59,10 @@ class BaseDirMismatch(Exception):
     """
 
 
+class SchemaMismatch(Exception):
+    """The store's schema version does not match the running code."""
+
+
 @contextlib.contextmanager
 def savepoint(conn: sqlite3.Connection, name: str):
     """Roll back just this block on failure, leaving the transaction open.
@@ -144,12 +148,16 @@ def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
         pass
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA foreign_keys = ON;")
+    stored = conn.execute("PRAGMA user_version").fetchone()[0]
+    if stored != 0 and stored != SCHEMA_VERSION:
+        conn.close()
+        raise SchemaMismatch(
+            f"index at {db_path} has schema version {stored}, but this "
+            f"version of docq expects {SCHEMA_VERSION}. Delete {db_path} "
+            f"and rebuild with `docq index`."
+        )
     conn.executescript(SCHEMA)
-    # Stamp the version only on a store that has none. Overwriting it every
-    # time would erase the very evidence the number exists to carry: an old
-    # store would be relabelled current the first time it was opened, and a
-    # later migration check would have nothing left to look at.
-    if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+    if stored == 0:
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
     return conn
@@ -217,4 +225,8 @@ def delete_file(conn: sqlite3.Connection, path: str) -> int:
 def stats(conn: sqlite3.Connection) -> dict:
     f = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
     c = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-    return {"files": f, "chunks": c}
+    result: dict = {"files": f, "chunks": c}
+    ts = get_meta(conn, "last_indexed_at")
+    if ts is not None:
+        result["last_indexed_at"] = ts
+    return result
