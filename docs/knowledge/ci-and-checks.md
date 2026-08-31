@@ -85,11 +85,7 @@ CI と pre-push の両方で同じスクリプトを同じ順序で呼ぶ。
 |---|---|
 | `test` | Python 3.10（`[dev]` のみ＝**tiktoken 無しのフォールバック経路**）と 3.13（`[tokens,dev]`）の 2 通りで `pytest` |
 | `docs` | 検査スクリプト 3 本の回帰テスト → 本番検査 → 実物文書の混入検査 |
-
-**ゴールデンクエリの回帰計測（`eval`）はまだ無い。** `scripts/eval-golden.py` が未作成で、
-pre-push 側も「スクリプトが無い」と表示して飛ばす。計測の設計は
-[search-quality-evaluation.md](search-quality-evaluation.md) にあるが、**実体が無いものを
-ジョブ表に現在形で載せない**——文書と実体の乖離はそれ自体が fail-open（決定ログ `#1-3`）。
+| `eval` | Python 3.13 + `[tokens,dev]` でゴールデンクエリの回帰計測（`scripts/eval-golden.py --set all --check-baseline`）。ベースラインは `eval/baselines.json` に記録されたトークンカウンタと指標を照合する |
 
 **`docs` ジョブは全履歴を取得する必要がある。** stale 検査が `git log` と `merge-base` を使うので、
 shallow clone では判定できず warning に退化する——これも fail-open の一種。
