@@ -11,6 +11,7 @@ import hashlib
 import os
 import stat
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -359,5 +360,9 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             _store.delete_file(conn, rel)
             stats.pruned += 1
 
+    _store.set_meta(
+        conn, "last_indexed_at",
+        datetime.now(timezone.utc).isoformat(),
+    )
     conn.commit()
     return stats

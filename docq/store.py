@@ -225,4 +225,8 @@ def delete_file(conn: sqlite3.Connection, path: str) -> int:
 def stats(conn: sqlite3.Connection) -> dict:
     f = conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
     c = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
-    return {"files": f, "chunks": c}
+    result: dict = {"files": f, "chunks": c}
+    ts = get_meta(conn, "last_indexed_at")
+    if ts is not None:
+        result["last_indexed_at"] = ts
+    return result
