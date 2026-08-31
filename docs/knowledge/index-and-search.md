@@ -166,21 +166,13 @@ REQ-D19-010 が塞ごうとしているのはこの構造そのもの。**#2 の
 | REQ-D19-013 | 走査が読めなかったディレクトリ・ファイルは無言でスキップせず報告する。索引できない状態と空のディレクトリを区別できるようにする | `tests/test_indexer.py::test_index_paths_reports_an_unreadable_root` / `::test_index_paths_reports_a_directory_it_cannot_read` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-014 | `index` の出力は `errors`（実行が成立しなかった。終了コード 1）と `warnings`（成立したが知っておくべきこと。終了コードに影響しない）を分ける | `tests/test_cli.py::test_warnings_are_reported_without_failing_the_run` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-015 | 1 ファイル分の索引書き込みは原子的とする。途中で失敗したファイルが「登録済みだがチャンク 0 件」として残り、以後スキップされ続けることがない | `tests/test_indexer.py::test_index_one_file_leaves_no_partial_write_behind` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
-| REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | 未整備 | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Tentative |
+| REQ-D19-016 | 索引スキーマはバージョンを持ち、既存索引のバージョン不一致を検出して再構築を要求する | `tests/test_store.py::test_open_store_raises_on_schema_version_mismatch` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 | REQ-D19-017 | BM25 の文書長正規化係数は実装内の単一の値として定義する。既定値と呼び出し側で異なる値が存在してはならない | `tests/test_search.py::test_minibm25_default_b_equals_length_norm_b` | [1-doc-flow-introduction.md](../original-docs/1-doc-flow-introduction.md) | Confirmed |
 <!-- REQ:end D19 -->
 
 ### Tentative の内訳
 
-規約上 Tentative には 2 種類あるので、どちらなのかを明記する。
-
-| 要件 | 種別 | 解消の道筋 |
-|---|---|---|
-| D19-016 | **未実装** | 下記 |
-
-**REQ-D19-016 は実装ギャップの可視化。** バージョンは記録しているが照合していない（`open_store` は
-未初期化の索引にだけ刻む）。実害は現時点で `check_base_dir` の「エントリはあるが基準が無い」判定が
-拾っているが、それは代替であって設計ではない。
+Tentative の要件は現在ない。
 
 ---
 
