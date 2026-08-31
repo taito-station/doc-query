@@ -153,8 +153,8 @@ def open_store(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
         conn.close()
         raise SchemaMismatch(
             f"index at {db_path} has schema version {stored}, but this "
-            f"version of docq expects {SCHEMA_VERSION}. Delete the index "
-            f"and rebuild it with `docq index`."
+            f"version of docq expects {SCHEMA_VERSION}. Delete {db_path} "
+            f"and rebuild with `docq index`."
         )
     conn.executescript(SCHEMA)
     if stored == 0:

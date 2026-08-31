@@ -232,6 +232,20 @@ def test_list_respects_limit(tmp_path, sample_pdf, monkeypatch, capsys):
     assert len(lines) == 1
 
 
+def test_stats_omits_last_indexed_at_before_first_index(tmp_path, monkeypatch, capsys):
+    db = tmp_path / ".docq" / "index.sqlite"
+    db.parent.mkdir(parents=True)
+    from docq import store
+    conn = store.open_store(db)
+    conn.close()
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli.main(["stats"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out.strip())
+    assert "last_indexed_at" not in out
+
+
 def test_stats_reports_counts(tmp_path, sample_pdf, monkeypatch, capsys):
     (tmp_path / "sample.pdf").write_bytes(sample_pdf.read_bytes())
     monkeypatch.chdir(tmp_path)
