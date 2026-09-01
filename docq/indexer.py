@@ -232,9 +232,9 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
         parts = _windows(page_text)
         total = len(parts)
         for part_index, part_text in enumerate(parts):
-            # Same construction as search.py's `_scoring_text()` (path +
-            # "\n" + body) — change one only alongside the other, or stored
-            # and query-time scoring terms drift apart.
+            # path + "\n" + body — the query side uses the same formula via
+            # _tokenize.scoring_terms(query). Changing this without reindexing
+            # will cause scoring drift.
             scoring_text = f"{rel}\n{part_text}"
             terms_json = json.dumps(
                 _tokenize.scoring_terms(scoring_text), ensure_ascii=False,

@@ -148,7 +148,6 @@ def _path_matches(path: str, globs: list[str]) -> bool:
     return any(fnmatch.fnmatch(path, g) for g in globs)
 
 
-
 def _budget_cost(hit: Hit) -> int:
     from . import tokens as _tokens
 

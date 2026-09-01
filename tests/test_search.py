@@ -292,18 +292,24 @@ def test_grep_snippet_symbol_query_centers_on_match(tmp_path):
     assert "no colons here" not in hits[0].snippet
 
 
-def test_chunk_count_warning_emitted(tmp_path, sample_pdf, capsys):
+def test_chunk_count_warning_emitted(tmp_path, sample_pdf, capsys, monkeypatch):
     """chunk 数が閾値を超えると stderr に警告を出す。"""
     import docq.search as _search_mod
-    original = _search_mod._CHUNK_WARN_THRESHOLD
-    try:
-        _search_mod._CHUNK_WARN_THRESHOLD = 1  # テスト用に閾値を下げる
-        conn = _indexed_conn(tmp_path, sample_pdf)
-        search.search(conn, "東京", top_k=5, max_tokens=800)
-        captured = capsys.readouterr()
-        assert "warning" in captured.err
-    finally:
-        _search_mod._CHUNK_WARN_THRESHOLD = original
+    monkeypatch.setattr(_search_mod, "_CHUNK_WARN_THRESHOLD", 1)
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    search.search(conn, "東京", top_k=5, max_tokens=800)
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
+
+
+def test_chunk_count_warning_emitted_grep(tmp_path, sample_pdf, capsys, monkeypatch):
+    """grep パスでも chunk 数が閾値を超えると stderr に警告を出す。"""
+    import docq.search as _search_mod
+    monkeypatch.setattr(_search_mod, "_CHUNK_WARN_THRESHOLD", 1)
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    search.search(conn, "東京", top_k=5, max_tokens=800, mode="grep")
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
 
 
 def test_chunk_count_no_warning_below_threshold(tmp_path, sample_pdf, capsys):

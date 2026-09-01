@@ -343,7 +343,7 @@ BM25 を一から構築していた。CLI は毎回新プロセスなのでキ�
 
 #### 決定
 
-`chunks` テーブルに `scoring_terms TEXT NOT NULL DEFAULT ''` カラムを追加（スキーマ v2→v3）し、
+`chunks` テーブルに `scoring_terms TEXT NOT NULL DEFAULT '[]'` カラムを追加（スキーマ v2→v3）し、
 インデクサが索引時に `scoring_terms(path + "\n" + text)` を計算して JSON 配列で保存する。検索の
 BM25 パスは `text` を読まずに `scoring_terms` だけをロードしてスコアリングを完了し、snippet 生成が
 必要な上位候補のみ `get_chunks_by_ids()` で `text` を後から取得する。
