@@ -369,8 +369,8 @@ BM25 パスは `text` を読まずに `scoring_terms` だけをロードして�
 #### 影響
 
 - `SCHEMA_VERSION` を 3 へ。既存索引は再構築が必要
-- `indexer.py` が `tokenize.scoring_terms` に依存（スコアリング語の計算式は `search.py:_scoring_text`
-  と同一であり、片方だけ変更すると索引と検索で乖離する）
+- `indexer.py` が `tokenize.scoring_terms` に依存（スコアリング語の計算式は `indexer.py` にのみ存在し、
+  変更時は再インデクスが必要）
 - 5,000 チャンク超で `search()` が stderr に警告を出す
 
 <!-- decision-log:end -->
