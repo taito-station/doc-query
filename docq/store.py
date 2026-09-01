@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   text        TEXT NOT NULL,
   part_index  INTEGER NOT NULL DEFAULT 0,
   part_total  INTEGER NOT NULL DEFAULT 1,
-  scoring_terms TEXT NOT NULL DEFAULT ''
+  scoring_terms TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
 CREATE TABLE IF NOT EXISTS meta (

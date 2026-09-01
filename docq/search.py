@@ -148,10 +148,6 @@ def _path_matches(path: str, globs: list[str]) -> bool:
     return any(fnmatch.fnmatch(path, g) for g in globs)
 
 
-def _scoring_text(row) -> str:
-    """Text used for ranking only; the excerpt stays anchored to the body."""
-    return f"{row['path']}\n{row['text']}"
-
 
 def _budget_cost(hit: Hit) -> int:
     from . import tokens as _tokens
@@ -183,6 +179,8 @@ def search(conn, query: str, *, mode: str = "bm25",
     from . import store as _store
 
     if not query.strip():
+        # re.escape("") matches at every offset — grep would return every
+        # chunk ranked by length.
         return []
 
     q_tokens = tokenize(query)
@@ -194,6 +192,12 @@ def search(conn, query: str, *, mode: str = "bm25",
             rows = [r for r in rows if _path_matches(r["path"], path_globs)]
         if not rows:
             return []
+        if len(rows) > _CHUNK_WARN_THRESHOLD:
+            print(
+                f"docq: warning: {len(rows)} chunks indexed; "
+                f"search may be slow above {_CHUNK_WARN_THRESHOLD} chunks",
+                file=sys.stderr,
+            )
         grep_pat = re.compile(re.escape(query), re.IGNORECASE)
         scored = []
         for r in rows:
