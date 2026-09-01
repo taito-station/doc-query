@@ -68,7 +68,10 @@ def _run_set(conn, set_name: str, top_k: int, show_details: bool) -> golden_eval
                 status = f"MISS (top-1: -, top-{top_k}: -)"
             print(f"  {d['anchor']:30s}: {status}")
 
-    print(f"  top-1: {result.top1:.4f}  top-k: {result.topk:.4f}  MRR@{top_k}: {result.mrr_at_k:.4f}")
+    print(
+        f"  top-1: {result.top1:.4f}  top-k: {result.topk:.4f}  MRR@{top_k}: {result.mrr_at_k:.4f}"
+        f"  elapsed: {result.elapsed_ms:.1f}ms"
+    )
     return result
 
 

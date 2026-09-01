@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -497,3 +498,14 @@ def test_index_paths_matches_uppercase_suffix(tmp_path, sample_pdf):
     stats = indexer.index_paths(conn, tmp_path, [docs])
 
     assert stats.indexed == 1
+
+
+def test_index_one_file_stores_scoring_terms(tmp_path, sample_pdf):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    indexer.index_one_file(conn, tmp_path, sample_pdf)
+    rows = store.all_chunks_for_scoring(conn)
+    assert rows
+    for r in rows:
+        terms = json.loads(r["scoring_terms"])
+        assert isinstance(terms, list)
+        assert len(terms) > 0

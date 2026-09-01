@@ -28,6 +28,8 @@ python -m docq get --chunk-id <ID>
 
 実測（3ページの日本語PDF）: 全文 10,566 トークン → 検索結果 647〜790 トークン（**92〜94% 削減**）。
 
+想定規模は数百ファイル・数千ページ程度。5,000 チャンクを超えると検索時に警告を出す（詳細は [docs/knowledge/product-goals.md](docs/knowledge/product-goals.md) の非目標）。
+
 ## ドキュメント
 
 確定した設計・要件・決定の記録は `docs/knowledge/` にある。読む入口はここ。

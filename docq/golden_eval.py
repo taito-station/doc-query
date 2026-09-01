@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,6 +52,7 @@ class EvalResult:
     total_queries: int
     token_counter: str
     details: list[dict]
+    elapsed_ms: float
 
 
 def is_correct(hit: _search.Hit, expected_path: str, expected_page: int) -> bool:
@@ -164,6 +166,7 @@ def evaluate(
     rr_sum = 0.0
     details: list[dict] = []
 
+    t0 = time.perf_counter()
     for q in queries:
         hits = _search.search(conn, q.query, top_k=top_k, max_tokens=max_tokens)
         rank = None
@@ -179,6 +182,7 @@ def evaluate(
             topk_hits += 1
             rr_sum += 1.0 / rank
         details.append(entry)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
 
     n = len(queries)
     return EvalResult(
@@ -188,6 +192,7 @@ def evaluate(
         total_queries=n,
         token_counter=_tokens.counter_name(),
         details=details,
+        elapsed_ms=elapsed_ms,
     )
 
 

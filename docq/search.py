@@ -13,12 +13,15 @@ import fnmatch
 import json
 import math
 import re
+import sys
 from dataclasses import dataclass
 
 from . import tokenize as _tokenize
 
 # Same BM25 length-normalization value mdq settled on (FR-MDQ-06).
 LENGTH_NORM_B = 0.2
+
+_CHUNK_WARN_THRESHOLD = 5000
 
 
 def tokenize(text: str) -> list[str]:
@@ -180,21 +183,17 @@ def search(conn, query: str, *, mode: str = "bm25",
     from . import store as _store
 
     if not query.strip():
-        # Otherwise the empty-token path below falls through to grep, where
-        # `re.escape("")` matches at every offset and every chunk comes back
-        # ranked by length.
-        return []
-
-    rows = _store.all_chunks(conn)
-    if path_globs:
-        rows = [r for r in rows if _path_matches(r["path"], path_globs)]
-    if not rows:
         return []
 
     q_tokens = tokenize(query)
 
     grep_pat: re.Pattern | None = None
     if mode == "grep" or not q_tokens:
+        rows = _store.all_chunks(conn)
+        if path_globs:
+            rows = [r for r in rows if _path_matches(r["path"], path_globs)]
+        if not rows:
+            return []
         grep_pat = re.compile(re.escape(query), re.IGNORECASE)
         scored = []
         for r in rows:
@@ -203,17 +202,43 @@ def search(conn, query: str, *, mode: str = "bm25",
                 scored.append((float(n), r))
         _sort_scored(scored)
     else:
-        corpus = [_tokenize.scoring_terms(_scoring_text(r)) for r in rows]
+        scoring_rows = _store.all_chunks_for_scoring(conn)
+        if path_globs:
+            scoring_rows = [r for r in scoring_rows
+                            if _path_matches(r["path"], path_globs)]
+        if not scoring_rows:
+            return []
+        if len(scoring_rows) > _CHUNK_WARN_THRESHOLD:
+            print(
+                f"docq: warning: {len(scoring_rows)} chunks indexed; "
+                f"search may be slow above {_CHUNK_WARN_THRESHOLD} chunks",
+                file=sys.stderr,
+            )
+        corpus = [json.loads(r["scoring_terms"]) for r in scoring_rows]
         q_terms = _tokenize.scoring_terms(query)
         bm25 = _MiniBM25(corpus, b=LENGTH_NORM_B)
         scores = bm25.get_scores(q_terms)
-        scored = [(float(s), r) for s, r in zip(scores, rows) if s > 0]
+        scored = [(float(s), r) for s, r in zip(scores, scoring_rows)
+                  if s > 0]
         _sort_scored(scored)
+
+    candidates = scored[: max(top_k * 6, top_k)]
+
+    if grep_pat is not None or return_unit == "locations":
+        text_map: dict[str, str] = {}
+    else:
+        chunk_ids = [r["chunk_id"] for _, r in candidates]
+        text_rows = _store.get_chunks_by_ids(conn, chunk_ids)
+        text_map = {cid: row["text"] for cid, row in text_rows.items()}
 
     hits: list[Hit] = []
     spent = 0
-    for score, r in scored[: max(top_k * 6, top_k)]:
-        snippet = _excerpt(r["text"], q_tokens, snippet_radius, return_unit,
+    for score, r in candidates:
+        if grep_pat is not None:
+            text = r["text"]
+        else:
+            text = text_map.get(r["chunk_id"], "")
+        snippet = _excerpt(text, q_tokens, snippet_radius, return_unit,
                             pattern=grep_pat)
         candidate = Hit(
             chunk_id=r["chunk_id"],

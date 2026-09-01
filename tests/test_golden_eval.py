@@ -133,6 +133,14 @@ class TestEvaluateMetrics:
         )
         assert result.token_counter == tokens.counter_name()
 
+    def test_elapsed_ms_non_negative(self, tmp_path):
+        result = self._run(
+            tmp_path,
+            ["テスト"],
+            [{"anchor": "t", "query": "テスト", "expected_path": "doc.pdf", "expected_page": 1}],
+        )
+        assert result.elapsed_ms >= 0.0
+
 
 class TestGenerateCorpus:
     def test_generates_pdfs(self, tmp_path):
@@ -198,7 +206,7 @@ class TestCheckBaseline:
     def test_pass(self):
         result = golden_eval.EvalResult(
             top1=0.5, topk=0.8, mrr_at_k=0.6,
-            total_queries=10, token_counter="x", details=[],
+            total_queries=10, token_counter="x", details=[], elapsed_ms=0.0,
         )
         baseline = {"top1": 0.5, "topk": 0.8, "mrr_at_k": 0.6}
         assert golden_eval.check_baseline(result, baseline) == []
@@ -206,7 +214,7 @@ class TestCheckBaseline:
     def test_above_passes(self):
         result = golden_eval.EvalResult(
             top1=0.6, topk=0.9, mrr_at_k=0.7,
-            total_queries=10, token_counter="x", details=[],
+            total_queries=10, token_counter="x", details=[], elapsed_ms=0.0,
         )
         baseline = {"top1": 0.5, "topk": 0.8, "mrr_at_k": 0.6}
         assert golden_eval.check_baseline(result, baseline) == []
@@ -214,7 +222,7 @@ class TestCheckBaseline:
     def test_below_fails(self):
         result = golden_eval.EvalResult(
             top1=0.4, topk=0.8, mrr_at_k=0.6,
-            total_queries=10, token_counter="x", details=[],
+            total_queries=10, token_counter="x", details=[], elapsed_ms=0.0,
         )
         baseline = {"top1": 0.5, "topk": 0.8, "mrr_at_k": 0.6}
         failures = golden_eval.check_baseline(result, baseline)
@@ -224,7 +232,7 @@ class TestCheckBaseline:
     def test_missing_key_fails(self):
         result = golden_eval.EvalResult(
             top1=0.5, topk=0.8, mrr_at_k=0.6,
-            total_queries=10, token_counter="x", details=[],
+            total_queries=10, token_counter="x", details=[], elapsed_ms=0.0,
         )
         baseline = {"top1": 0.5, "topk": 0.8}
         failures = golden_eval.check_baseline(result, baseline)

@@ -18,7 +18,9 @@ DEFAULT_DB_PATH = Path(".docq") / "index.sqlite"
 # 2: added the `meta` table (records the base directory path keys are
 # relative to). Bumped so a future version check can tell a pre-`meta`
 # index apart from one that simply has not been bound yet.
-SCHEMA_VERSION = 2
+# 3: added `chunks.scoring_terms` (BM25 term list computed at index time,
+# so query time does not have to re-tokenize `text`).
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -36,7 +38,8 @@ CREATE TABLE IF NOT EXISTS chunks (
   token_est   INTEGER NOT NULL,
   text        TEXT NOT NULL,
   part_index  INTEGER NOT NULL DEFAULT 0,
-  part_total  INTEGER NOT NULL DEFAULT 1
+  part_total  INTEGER NOT NULL DEFAULT 1,
+  scoring_terms TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
 CREATE TABLE IF NOT EXISTS meta (
@@ -181,12 +184,12 @@ def insert_chunks(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:
     """Insert chunk rows.
 
     Each row: (chunk_id, path, location, start_page, end_page, token_est,
-    text, part_index, part_total).
+    text, part_index, part_total, scoring_terms).
     """
     conn.executemany(
         "INSERT OR REPLACE INTO chunks(chunk_id, path, location, start_page, "
-        "end_page, token_est, text, part_index, part_total) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
+        "end_page, token_est, text, part_index, part_total, scoring_terms) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
         list(rows),
     )
 
@@ -203,6 +206,36 @@ def all_chunks(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         "SELECT chunk_id, path, location, start_page, end_page, token_est, "
         "text, part_index, part_total FROM chunks"
     ))
+
+
+def all_chunks_for_scoring(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Return chunk metadata plus pre-tokenized scoring terms, without `text`.
+
+    Query-time BM25 scans every chunk; excluding `text` keeps that scan from
+    paying for column data it does not need. Full rows (with `text`) are
+    fetched afterward, only for the chunks that actually rank, via
+    `get_chunks_by_ids`.
+    """
+    conn.row_factory = sqlite3.Row
+    return list(conn.execute(
+        "SELECT chunk_id, path, location, start_page, end_page, token_est, "
+        "scoring_terms, part_index, part_total FROM chunks"
+    ))
+
+
+def get_chunks_by_ids(conn: sqlite3.Connection, chunk_ids: list[str]) -> dict[str, sqlite3.Row]:
+    """Fetch full chunk rows (including `text`) for the given chunk_ids."""
+    if not chunk_ids:
+        return {}
+    conn.row_factory = sqlite3.Row
+    placeholders = ",".join("?" * len(chunk_ids))
+    rows = conn.execute(
+        f"SELECT chunk_id, path, location, start_page, end_page, token_est, "
+        f"text, part_index, part_total FROM chunks "
+        f"WHERE chunk_id IN ({placeholders})",
+        chunk_ids,
+    ).fetchall()
+    return {r["chunk_id"]: r for r in rows}
 
 
 def list_all_paths(conn: sqlite3.Connection) -> set[str]:
