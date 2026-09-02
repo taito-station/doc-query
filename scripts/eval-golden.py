@@ -168,7 +168,7 @@ def main() -> int:
         try:
             results: dict[str, golden_eval.EvalResult] = {}
             for s in sets:
-                show_details = s == "dev"
+                show_details = True
                 results[s] = _run_set(conn, s, args.top_k, show_details)
         except _ValidationError as e:
             print(f"ERROR: {e}", file=sys.stderr)
