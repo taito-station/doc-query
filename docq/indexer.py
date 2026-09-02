@@ -8,6 +8,7 @@ location to report back to the caller.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 from dataclasses import dataclass, field
@@ -17,6 +18,7 @@ from typing import Literal, NamedTuple
 
 from . import extractor_pdf as _extractor
 from . import store as _store
+from . import tokenize as _tokenize
 from . import tokens as _tokens
 
 FIXED_WINDOW_CHARS = 1000
@@ -230,6 +232,13 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
         parts = _windows(page_text)
         total = len(parts)
         for part_index, part_text in enumerate(parts):
+            # path + "\n" + body — the query side uses the same formula via
+            # _tokenize.scoring_terms(query). Changing this without reindexing
+            # will cause scoring drift.
+            scoring_text = f"{rel}\n{part_text}"
+            terms_json = json.dumps(
+                _tokenize.scoring_terms(scoring_text), ensure_ascii=False,
+            )
             rows.append((
                 _chunk_id(rel, page_num, part_index),
                 rel,
@@ -240,6 +249,7 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
                 part_text,
                 part_index,
                 total,
+                terms_json,
             ))
     # First write of the run: claim the store here, so nothing above this
     # point can bind a base directory it never actually indexed.

@@ -7,7 +7,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
 distilled_from_sha: "a539394"
-updated: "2026-08-27"
+updated: "2026-09-02"
 ---
 
 # 目的・成功条件・対象境界
@@ -57,7 +57,9 @@ doc-query は文書を索引し、**質問に関連する小さな snippet だ�
   重いローカルモデルを要求し、ローカル完結と衝突する
 - **pptx / xlsx**。汎用の索引・検索コアはフォーマット非依存に作ってあり、抽出モジュールを足せば
   対応できる構造だが、**現時点では未実装**（[vendoring-and-upstream.md](vendoring-and-upstream.md)）
-- **大規模コーパス**。検索のたびに全チャンクを読み直す実装なので、コストはコーパス全体に比例する
+- **大規模コーパス**。BM25 の構築は全チャンクの scoring terms を走査するため、コストはチャンク数に
+  比例する。scoring terms は索引時に永続化済みで検索時の再トークナイズは不要だが、走査自体は残る。
+  想定規模は数百ファイル・数千ページ程度で、5,000 チャンクを超えると警告を出す
   （[#5](https://github.com/taito-station/doc-query/issues/5)）
 
 ## 要件

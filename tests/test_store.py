@@ -46,3 +46,32 @@ def test_open_store_raises_on_schema_version_mismatch(tmp_path):
     conn.close()
     with pytest.raises(store.SchemaMismatch, match="schema version 999"):
         store.open_store(db)
+
+
+def test_get_chunks_by_ids_returns_matching_rows(tmp_path):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    store.upsert_file(conn, "a.pdf", sha1="aaa", mtime=0.0, size_bytes=100)
+    store.insert_chunks(conn, [
+        ("c1", "a.pdf", "p.1", 1, 1, 10, "hello", 0, 1, "[]"),
+        ("c2", "a.pdf", "p.2", 2, 2, 10, "world", 0, 1, "[]"),
+    ])
+    result = store.get_chunks_by_ids(conn, ["c1", "c2"])
+    assert set(result.keys()) == {"c1", "c2"}
+    assert result["c1"]["text"] == "hello"
+    assert result["c2"]["text"] == "world"
+
+
+def test_get_chunks_by_ids_missing_id_is_absent(tmp_path):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    store.upsert_file(conn, "a.pdf", sha1="aaa", mtime=0.0, size_bytes=100)
+    store.insert_chunks(conn, [
+        ("c1", "a.pdf", "p.1", 1, 1, 10, "hello", 0, 1, "[]"),
+    ])
+    result = store.get_chunks_by_ids(conn, ["c1", "missing"])
+    assert "c1" in result
+    assert "missing" not in result
+
+
+def test_get_chunks_by_ids_empty_list_returns_empty(tmp_path):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    assert store.get_chunks_by_ids(conn, []) == {}

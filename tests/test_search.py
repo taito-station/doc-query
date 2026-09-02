@@ -1,6 +1,7 @@
 import json
 
 from docq import indexer, search, store
+from docq import tokenize as _tokenize
 from docq import tokens
 
 
@@ -90,9 +91,12 @@ def test_list_chunks_respects_limit(tmp_path, sample_pdf):
 def _insert_multipart_chunk(conn, path="test.pdf"):
     store.upsert_file(conn, path, sha1="abc123", mtime=0.0, size_bytes=100)
     store.insert_chunks(conn, [
-        ("mp-0", path, "p.5", 5, 5, 10, "part zero", 0, 3),
-        ("mp-1", path, "p.5", 5, 5, 10, "part one", 1, 3),
-        ("mp-2", path, "p.5", 5, 5, 10, "part two", 2, 3),
+        ("mp-0", path, "p.5", 5, 5, 10, "part zero", 0, 3,
+         json.dumps(_tokenize.scoring_terms(f"{path}\npart zero"), ensure_ascii=False)),
+        ("mp-1", path, "p.5", 5, 5, 10, "part one", 1, 3,
+         json.dumps(_tokenize.scoring_terms(f"{path}\npart one"), ensure_ascii=False)),
+        ("mp-2", path, "p.5", 5, 5, 10, "part two", 2, 3,
+         json.dumps(_tokenize.scoring_terms(f"{path}\npart two"), ensure_ascii=False)),
     ])
 
 
@@ -240,7 +244,8 @@ def test_grep_snippet_centers_on_match_line(tmp_path):
     text = "\n".join(lines)
     store.upsert_file(conn, path, sha1="abc123", mtime=0.0, size_bytes=100)
     store.insert_chunks(conn, [
-        ("grep-0", path, "p.1", 1, 1, 50, text, 0, 1),
+        ("grep-0", path, "p.1", 1, 1, 50, text, 0, 1,
+         json.dumps(_tokenize.scoring_terms(f"{path}\n{text}"), ensure_ascii=False)),
     ])
 
     hits = search.search(conn, "ERROR-042", top_k=5, max_tokens=800, mode="grep")
@@ -276,7 +281,8 @@ def test_grep_snippet_symbol_query_centers_on_match(tmp_path):
     text = "\n".join(lines)
     store.upsert_file(conn, path, sha1="def456", mtime=0.0, size_bytes=100)
     store.insert_chunks(conn, [
-        ("symbol-0", path, "p.1", 1, 1, 50, text, 0, 1),
+        ("symbol-0", path, "p.1", 1, 1, 50, text, 0, 1,
+         json.dumps(_tokenize.scoring_terms(f"{path}\n{text}"), ensure_ascii=False)),
     ])
 
     hits = search.search(conn, "::", top_k=5, max_tokens=800)
@@ -284,3 +290,30 @@ def test_grep_snippet_symbol_query_centers_on_match(tmp_path):
     assert hits
     assert "foo::bar" in hits[0].snippet
     assert "no colons here" not in hits[0].snippet
+
+
+def test_chunk_count_warning_emitted(tmp_path, sample_pdf, capsys, monkeypatch):
+    """chunk 数が閾値を超えると stderr に警告を出す。"""
+    import docq.search as _search_mod
+    monkeypatch.setattr(_search_mod, "_CHUNK_WARN_THRESHOLD", 1)
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    search.search(conn, "東京", top_k=5, max_tokens=800)
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
+
+
+def test_chunk_count_warning_emitted_grep(tmp_path, sample_pdf, capsys, monkeypatch):
+    """grep パスでも chunk 数が閾値を超えると stderr に警告を出す。"""
+    import docq.search as _search_mod
+    monkeypatch.setattr(_search_mod, "_CHUNK_WARN_THRESHOLD", 1)
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    search.search(conn, "東京", top_k=5, max_tokens=800, mode="grep")
+    captured = capsys.readouterr()
+    assert "warning" in captured.err
+
+
+def test_chunk_count_no_warning_below_threshold(tmp_path, sample_pdf, capsys):
+    conn = _indexed_conn(tmp_path, sample_pdf)
+    search.search(conn, "東京", top_k=5, max_tokens=800)
+    captured = capsys.readouterr()
+    assert "warning" not in captured.err

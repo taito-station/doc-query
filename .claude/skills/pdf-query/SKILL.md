@@ -46,6 +46,7 @@ python -m docq get --chunk-id <返ってきたID>
 - スキャン画像PDFのOCR。
 - Markdown / ソースコード検索（`markdown-query` / `code-query` を使う）。
 - PowerPoint / Excel の検索（未対応）。
+- 大規模コーパス（数百ファイル・数千ページ程度が想定上限。5,000チャンク超で警告）。
 
 ## 手順サマリ
 

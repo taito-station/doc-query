@@ -10,8 +10,8 @@ sources:
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "94738c7"
-updated: "2026-08-29"
+distilled_from_sha: "c423838"
+updated: "2026-09-02"
 ---
 
 # 索引と検索
@@ -39,7 +39,9 @@ cli.py             サブコマンドと JSON 出力
 `.docq/` 作成時に `.gitignore`（内容 `*`）を自動生成し、DB の誤コミットを防ぐ。
 
 `files` テーブルが 1 ファイル 1 行、`chunks` が 1 チャンク 1 行で `files(path)` を外部キー参照する
-（`ON DELETE CASCADE`）。`meta` は key-value で、現在の唯一のキーは基準ディレクトリ。
+（`ON DELETE CASCADE`）。`chunks.scoring_terms` は索引時に計算した BM25 用のスコアリング語を JSON
+配列で保持する（検索時の再トークナイズを回避するため）。`meta` は key-value で、現在の唯一のキーは
+基準ディレクトリ。
 
 ### チャンクの単位
 
@@ -108,7 +110,10 @@ REQ-D19-017 を充足した。
 静かに消える。外部ライブラリ（`rank_bm25`）ではなく自前実装なのは、この 1 点のためである。
 
 **スコアリング対象にはチャンク本文に加えてパスを含める。** ファイル名にしか現れない語でもそのチャンクへ
-到達できる。この連結はスコアリングのためだけで、返す snippet には影響しない。
+到達できる。この連結はスコアリングのためだけで、返す snippet には影響しない。スコアリング語は**索引時に
+計算して `chunks.scoring_terms` に永続化**されており、検索時は再トークナイズせず JSON を読み出すだけで
+済む。検索はチャンクの `text` を読まずにスコアリングを完了し、snippet 生成が必要な上位候補のみ `text` を
+後から取得する（2 フェーズ読み込み）。
 
 ### snippet の選定
 
@@ -327,5 +332,45 @@ REQ-D19-016 は「索引スキーマはバージョンを持ち、既存索引�
 - REQ-D19-016 を Confirmed に昇格
 - CLI の `main()` で `SchemaMismatch` を catch し、JSON エラーと rc=1 で報告
 - DDL 適用順序を「バージョン検査 → DDL → バージョン書き込み」に変更
+
+### #1-5: scoring terms を索引時に永続化し検索時の再トークナイズを排除する (2026-09-02) — 採用
+
+#### コンテキスト
+
+検索のたびに `all_chunks()` で全チャンクの `text` をロードし、`scoring_terms()` で再トークナイズして
+BM25 を一から構築していた。CLI は毎回新プロセスなのでキャッシュも効かず、コストがコーパスの全文字数に
+比例していた（[#5](https://github.com/taito-station/doc-query/issues/5)）。
+
+#### 決定
+
+`chunks` テーブルに `scoring_terms TEXT NOT NULL DEFAULT '[]'` カラムを追加（スキーマ v2→v3）し、
+インデクサが索引時に `scoring_terms(path + "\n" + text)` を計算して JSON 配列で保存する。検索の
+BM25 パスは `text` を読まずに `scoring_terms` だけをロードしてスコアリングを完了し、snippet 生成が
+必要な上位候補のみ `get_chunks_by_ids()` で `text` を後から取得する。
+
+#### 理由
+
+- **再トークナイズが支配的コスト。** NFKC 正規化 + 正規表現 + CJK バイグラム生成が全チャンクの全文字に
+  対して毎回走る。terms の JSON デシリアライズはこれよりはるかに安い。
+- **text の全量ロードも不要。** BM25 スコアリングに `text` は使わないので、排除すれば SQLite の
+  オーバーフローページ読み出しを省ける。snippet 生成は上位候補だけで済む。
+- **スキーマ変更は既存の reject + 手動再構築パスに乗る。** #1-4 の決定通り、バージョン不一致で
+  `SchemaMismatch` を出し、ユーザーに再インデクスを案内する。
+
+#### 却下した代替案
+
+- **tf / df / IDF も永続化して BM25 構築自体をスキップする。** 効果は大きいがスキーマが複雑になり、
+  チャンクの追加・削除のたびに全体の df / IDF を再計算して更新する必要がある。現時点では terms の
+  永続化だけで十分な改善が得られる。
+- **in-memory キャッシュ（sqlite3 の shared cache / mmap 等）。** CLI が毎回新プロセスを立てるため
+  プロセス内キャッシュは効かない。プロセス間キャッシュはデーモンが必要になり、ローカル完結の
+  シンプルさを損なう。
+
+#### 影響
+
+- `SCHEMA_VERSION` を 3 へ。既存索引は再構築が必要
+- `indexer.py` が `tokenize.scoring_terms` に依存（スコアリング語の計算式は `indexer.py` にのみ存在し、
+  変更時は再インデクスが必要）
+- 5,000 チャンク超で `search()` が stderr に警告を出す
 
 <!-- decision-log:end -->
