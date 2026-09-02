@@ -6,6 +6,7 @@ tags: [D17, D19]
 sources:
   - docs/original-docs/2-fullwidth-scoring-defect.md
   - docs/qa/QA-doc-flow-introduction.md
+  - scripts/eval-golden.py
 distilled_from_sha: "7ac8019"
 updated: "2026-09-02"
 ---
@@ -76,7 +77,8 @@ updated: "2026-09-02"
 語彙単位というランキングの既定値を触る予定があり、その都度この危険がある。
 
 **既定値のチューニング中はホールドアウトの内訳を意識的に見ない。** これは機械検査できない運用規律である。
-計測スクリプトは全セットの詳細（各クエリの rank / HIT / MISS）を表示する（決定 #21-2）。
+計測スクリプトは全セットの詳細（各クエリの rank / HIT / MISS）を常時表示するため、チューニング中に
+holdout の個別結果を参照すると overfitting のリスクがある（決定 #21-2）。
 
 ## ベースライン
 
