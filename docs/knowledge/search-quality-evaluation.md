@@ -7,7 +7,7 @@ sources:
   - docs/original-docs/2-fullwidth-scoring-defect.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/eval-golden.py
-distilled_from_sha: "7ac8019"
+distilled_from_sha: "70dc6fb"
 updated: "2026-09-02"
 ---
 
