@@ -509,3 +509,46 @@ def test_index_one_file_stores_scoring_terms(tmp_path, sample_pdf):
         terms = json.loads(r["scoring_terms"])
         assert isinstance(terms, list)
         assert len(terms) > 0
+
+
+def test_index_one_file_creates_chunks_from_pptx(tmp_path, sample_pptx):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    result = indexer.index_one_file(conn, tmp_path, sample_pptx)
+    assert result.status == "indexed"
+    assert result.chunks > 0
+
+
+def test_index_one_file_creates_chunks_from_xlsx(tmp_path, sample_xlsx):
+    conn = store.open_store(tmp_path / "index.sqlite")
+    result = indexer.index_one_file(conn, tmp_path, sample_xlsx)
+    assert result.status == "indexed"
+    assert result.chunks > 0
+
+
+def test_index_paths_collects_pptx_and_xlsx(tmp_path, sample_pptx, sample_xlsx):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "report.pptx").write_bytes(sample_pptx.read_bytes())
+    (docs / "data.xlsx").write_bytes(sample_xlsx.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+    assert stats.indexed == 2
+
+
+def test_index_paths_matches_uppercase_pptx_suffix(tmp_path, sample_pptx):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "REPORT.PPTX").write_bytes(sample_pptx.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+    assert stats.indexed == 1
+
+
+def test_index_one_file_rejects_unsupported_format(tmp_path):
+    txt = tmp_path / "notes.txt"
+    txt.write_text("hello")
+    conn = store.open_store(tmp_path / "index.sqlite")
+    with pytest.raises(ValueError, match="Unsupported format"):
+        indexer.index_one_file(conn, tmp_path, txt)
