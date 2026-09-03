@@ -1,6 +1,7 @@
 # テーブル構造の抽出改善調査 (Issue #22)
 
 調査日: 2026-09-03
+pdfplumber: 0.11.10
 
 ## 調査目的
 
@@ -10,9 +11,11 @@ pdfplumber は `extract_tables()` を持つが、現状 `extract_text()` のみ�
 ## 実験方法
 
 1. 既存 eval コーパス 5 PDF に `extract_tables()` を適用
-2. reportlab の `Table` クラスで罫線付き料金表 PDF を合成（ticket-prices と同じデータ）
+2. reportlab の `Table` クラスで罫線付き料金表 PDF を合成（ticket-prices と同じデータ、3 列×4 行、結合セルなし）
 3. 同じデータを `drawString()` で描画した PDF と比較
 4. `extract_text()` / `extract_tables()` の出力、トークナイズ結果、検索スコアを比較
+
+※ 本実験のテーブル PDF は reportlab で合成した単純な罫線付きテーブルのみを対象としている。実世界の複雑なレイアウト（結合セル・入れ子テーブル・マルチカラム）は検証範囲外。
 
 ## 実験結果
 
@@ -73,7 +76,7 @@ drawString PDF:
 テーブル PDF: 27 terms（ファイル名部分 `table`, `prices` を除き一致）
 drawString PDF: 27 terms（ファイル名部分 `drawstring`, `prices` を除き一致）
 
-scoring terms は同一。
+ファイル名由来トークン（`table` vs `drawstring`）を除き scoring terms は同一。
 
 ### 5. 検索スコア比較
 
