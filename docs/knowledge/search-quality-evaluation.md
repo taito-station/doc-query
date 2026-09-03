@@ -5,10 +5,11 @@ doc_class: [D17, D19]
 tags: [D17, D19]
 sources:
   - docs/original-docs/2-fullwidth-scoring-defect.md
+  - docs/original-docs/22-table-extraction-investigation.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/eval-golden.py
-distilled_from_sha: "70dc6fb"
-updated: "2026-09-02"
+distilled_from_sha: "26a375c"
+updated: "2026-09-03"
 ---
 
 # 検索品質の計測
@@ -193,5 +194,36 @@ holdout の `child-fare` クエリ（`小児 料金`、期待: `ticket-prices.pd
 
 - holdout 詳細表示を有効化し、今後 MISS クエリの特定を容易にする（#3-1 の出力制限ポリシーを変更）
 - ベースラインは変更しない
+
+### #22-3: pdfplumber extract_tables() の導入は現時点で不要 (2026-09-03) — 採用
+
+#### コンテキスト
+
+pdfplumber は `extract_tables()` を持つが、`extractor_pdf.py` は `extract_text()` のみ使用している。
+罫線付きテーブルを含む PDF でセル構造が潰れて検索精度が落ちている可能性を調査した（Issue #22）。
+
+#### 決定
+
+`extract_tables()` の導入は行わない。現行の `extract_text()` のみの抽出を維持する。
+
+#### 理由
+
+- reportlab `Table` で罫線付きテーブルを合成し、`drawString` プレーンテキストと比較実験を行った
+- `extract_text()` の出力は**テーブル構造の有無に関わらず同一**（pdfplumber が行単位で正しく抽出）
+- トークナイズ結果も同一（27 terms、ファイル名部分を除き完全一致）
+- 検索スコアも全クエリで完全同一（指定席Ａ 料金: 1.2466, 小児 料金: 0.2877, 指定席Ｓ 大人: 1.5343）
+- 既存 eval コーパス 5 PDF にはテーブルオブジェクトが存在しない（全 0 件検出）
+
+#### 却下した代替案
+
+- **`extract_tables()` でセル単位テキストを結合して使う。** `extract_text()` が既に同等の出力を返す
+  ため、追加の複雑さに見合わない。
+- **テーブル検出時に構造化マークアップ（Markdown 表など）を付与する。** BM25 はバッグオブワーズ
+  なので構造情報はスコアリングに寄与しない。スニペット可読性の改善はあり得るが、現時点で実害がない。
+
+#### 影響
+
+- コード変更なし
+- 将来、複雑なマルチカラムレイアウトや結合セルを含む PDF が対象になった場合に再検討する
 
 <!-- decision-log:end -->
