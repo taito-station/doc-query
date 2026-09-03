@@ -5,10 +5,11 @@ doc_class: [D17, D19]
 tags: [D17, D19]
 sources:
   - docs/original-docs/2-fullwidth-scoring-defect.md
+  - docs/original-docs/3-table-extraction-investigation.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/eval-golden.py
-distilled_from_sha: "70dc6fb"
-updated: "2026-09-02"
+distilled_from_sha: "956458a"
+updated: "2026-09-03"
 ---
 
 # 検索品質の計測
