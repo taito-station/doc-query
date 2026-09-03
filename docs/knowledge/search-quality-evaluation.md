@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/22-table-extraction-investigation.md
   - docs/qa/QA-doc-flow-introduction.md
   - scripts/eval-golden.py
-distilled_from_sha: "956458a"
+distilled_from_sha: "77e7162"
 updated: "2026-09-03"
 ---
 
