@@ -4,14 +4,15 @@ kind: knowledge
 doc_class: [D19, D08, D10]
 tags: [D19, D08, D10]
 sources:
+  - docq/extractor_office.py
   - docq/indexer.py
   - docq/search.py
   - docq/store.py
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "c423838"
-updated: "2026-09-02"
+distilled_from_sha: "6e26e91"
+updated: "2026-09-03"
 ---
 
 # 索引と検索
@@ -19,18 +20,20 @@ updated: "2026-09-02"
 ## モジュールの分割（D19）
 
 ```
-extractor_pdf.py   PDF → ページごとのテキスト        ← フォーマット固有
-indexer.py         ページ → チャンク、走査と prune   ← フォーマット固有
+extractor_pdf.py    PDF → ページごとのテキスト              ← フォーマット固有
+extractor_office.py pptx/xlsx → スライド/シートごとのテキスト ← フォーマット固有
+indexer.py          拡張子ディスパッチ、チャンク化、走査と prune
 --------------------------------------------------
-store.py           チャンクの永続化（SQLite）        ← フォーマット非依存
-search.py          BM25 ランキングと snippet 抽出    ← フォーマット非依存
-tokenize.py        スコアリング語の生成              ← フォーマット非依存
-tokens.py          トークン数の計上                  ← フォーマット非依存
-cli.py             サブコマンドと JSON 出力
+store.py            チャンクの永続化（SQLite）              ← フォーマット非依存
+search.py           BM25 ランキングと snippet 抽出          ← フォーマット非依存
+tokenize.py         スコアリング語の生成                    ← フォーマット非依存
+tokens.py           トークン数の計上                        ← フォーマット非依存
+cli.py              サブコマンドと JSON 出力
 ```
 
-依存は上から下へ一方向。`store` は `search` を知らない。フォーマット非依存層は `mdq` から vendor した
-もので、改変点は [vendoring-and-upstream.md](vendoring-and-upstream.md)。
+依存は上から下へ一方向。`store` は `search` を知らない。`indexer` は拡張子で extractor を選択し、
+新フォーマットの追加は extractor モジュールと `_EXTRACTORS` 辞書への 1 行追加で完結する。
+フォーマット非依存層は `mdq` から vendor したもので、改変点は [vendoring-and-upstream.md](vendoring-and-upstream.md)。
 
 ## データモデル（D08）
 
@@ -45,9 +48,10 @@ cli.py             サブコマンドと JSON 出力
 
 ### チャンクの単位
 
-**PDF の 1 ページを 1000 文字窓 / 200 文字オーバーラップの固定窓で分割**する。`mdq` と同じ既定値。
+**文書の 1 ページ（PDF のページ / pptx のスライド / xlsx のシート）を 1000 文字窓 / 200 文字
+オーバーラップの固定窓で分割**する。`mdq` と同じ既定値。
 
-PDF には Markdown のような見出し構造が無いので、`mdq` が使う見出しベースのチャンク化は成立しない。
+これらの文書には Markdown のような見出し構造が無いので、`mdq` が使う見出しベースのチャンク化は成立しない。
 代わりに**ページ番号を所在情報として使う**——呼び出し側へ返せて、文書を開けば人間が確認できる、
 安定した単位だからである。`location` は `p.3` の形。
 
@@ -66,8 +70,8 @@ PDF には Markdown のような見出し構造が無いので、`mdq` が使う
 
 ### 増分と prune
 
-`sha1` 一致で未変更と判定してスキップする。テキストレイヤーを持たない PDF（スキャン PDF）は
-`IndexStats.no_text` で `skipped` と分離集計し、OCR 非対応の warning を出す。prune の対象は
+`sha1` 一致で未変更と判定してスキップする。テキストを抽出できないファイル（スキャン PDF、
+空のスライド/シート等）は `IndexStats.no_text` で `skipped` と分離集計し warning を出す。prune の対象は
 **(1) 今回スキャンした root 配下にあり、かつ (2) ディスク上に無いことを確認できた**エントリに限る。
 
 この 2 条件はどちらも事故から入った。(1) が無いと `index --root docs` の後の `index --root manuals` で
@@ -372,5 +376,44 @@ BM25 パスは `text` を読まずに `scoring_terms` だけをロードして�
 - `indexer.py` が `tokenize.scoring_terms` に依存（スコアリング語の計算式は `indexer.py` にのみ存在し、
   変更時は再インデクスが必要）
 - 5,000 チャンク超で `search()` が stderr に警告を出す
+
+### #24-6: pptx / xlsx 対応を extractor_office.py + 拡張子ディスパッチで実装する (2026-09-03) — 採用
+
+#### コンテキスト
+
+doc-query は PDF のみ対応しており、`indexer.py` が `extractor_pdf` をハードコード import していた。
+pptx / xlsx を含むオフィス文書を検索対象に加える要望があり（Issue #22 の調査で pdfplumber の限界も
+確認済み）、汎用層（store / search / tokenize）の切り分けは既に済んでいた。
+
+#### 決定
+
+`extractor_pdf.py` と同じインターフェース（`extract_pages(path) -> list[str]`）を持つ
+`extractor_office.py` を新設し、`indexer.py` に拡張子から extractor を選択するディスパッチ辞書
+`_EXTRACTORS` を導入する。`python-pptx` と `openpyxl` を必須依存として追加する。
+
+#### 理由
+
+- **インターフェースの統一。** スライド→ページ、シート→ページの対応は自然で、既存のチャンク化・
+  スコアリング・検索パイプラインを一切変更せずに新フォーマットを通せる
+- **必須依存とする。** ドキュメント検索ツールとしてマルチフォーマット対応は基本機能であり、
+  オプショナルにするとインポートガードと条件分岐が増え、テストの組み合わせも倍になる
+- **ディスパッチ辞書。** 新フォーマットの追加が extractor モジュール + 辞書 1 行で完結する。
+  indexer 本体のロジック変更が不要
+
+#### 却下した代替案
+
+- **フォーマットごとに indexer を分ける（indexer_pdf / indexer_office）。** チャンク化・sha1 判定・
+  prune のロジックがフォーマット非依存なので、分けると重複になる
+- **python-pptx / openpyxl をオプショナル依存にする。** インストール時の条件分岐と実行時の
+  ImportError ハンドリングが必要になり、複雑さに見合わない
+- **extractor_pptx / extractor_xlsx をそれぞれ独立モジュールにする。** 現時点で 2 フォーマットしか
+  なく、1 モジュール内のサフィックス分岐で十分。フォーマットが増えた場合に分離を検討する
+
+#### 影響
+
+- `pyproject.toml` に `openpyxl>=3.1` と `python-pptx>=1.0` を追加
+- `indexer.py` の `_walk_pdfs` → `_walk_docs`、`PDF_SUFFIX` → `_EXTRACTORS` 辞書に変更
+- `index_one_file` の引数名 `pdf_path` → `file_path`（位置引数のため既存コール側への影響なし）
+- テスト 14 件追加（extractor 9 + indexer 5）
 
 <!-- decision-log:end -->

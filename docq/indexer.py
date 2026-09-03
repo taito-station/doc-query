@@ -1,9 +1,10 @@
-"""Scan PDFs under configured roots, chunk them, and persist to the store.
+"""Scan documents under configured roots, chunk them, and persist to the store.
+
+Supported formats: PDF, pptx, xlsx.
 
 Chunking follows mdq's `fixed_window` strategy (same defaults: 1000-char
-window, 200-char overlap), applied per PDF page rather than per file —
-PDFs have no heading structure, but a page number is a stable, meaningful
-location to report back to the caller.
+window, 200-char overlap), applied per page/slide/sheet rather than per file —
+a page number is a stable, meaningful location to report back to the caller.
 """
 from __future__ import annotations
 
@@ -14,9 +15,11 @@ import stat
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal, NamedTuple
 
-from . import extractor_pdf as _extractor
+from . import extractor_office as _extractor_office
+from . import extractor_pdf as _extractor_pdf
 from . import store as _store
 from . import tokenize as _tokenize
 from . import tokens as _tokens
@@ -24,7 +27,11 @@ from . import tokens as _tokens
 FIXED_WINDOW_CHARS = 1000
 FIXED_WINDOW_OVERLAP = 200
 
-PDF_SUFFIX = ".pdf"
+_EXTRACTORS: dict[str, Callable[[Path], list[str]]] = {
+    ".pdf": _extractor_pdf.extract_pages,
+    ".pptx": _extractor_office.extract_pages,
+    ".xlsx": _extractor_office.extract_pages,
+}
 
 
 class IndexResult(NamedTuple):
@@ -138,8 +145,8 @@ def _is_usable_root(path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def _walk_pdfs(root: Path, stats: "IndexStats") -> list[Path]:
-    """PDFs under `root`, in a stable order, reporting what could not be read.
+def _walk_docs(root: Path, stats: "IndexStats") -> list[Path]:
+    """Supported documents under `root`, in a stable order.
 
     `Path.rglob` is unusable for this in two ways. It drops unreadable
     directories without a word, so a permissions problem is indistinguishable
@@ -164,7 +171,7 @@ def _walk_pdfs(root: Path, stats: "IndexStats") -> list[Path]:
     for dirpath, _dirnames, filenames in os.walk(root, onerror=on_error,
                                                   followlinks=False):
         for name in filenames:
-            if not name.lower().endswith(PDF_SUFFIX):
+            if os.path.splitext(name)[1].lower() not in _EXTRACTORS:
                 continue
             path = Path(dirpath) / name
             st = _stat_or_none(path)
@@ -200,8 +207,8 @@ def _chunk_id(path: str, page: int, part_index: int) -> str:
     return hashlib.sha1(f"{path}:{page}:{part_index}".encode("utf-8")).hexdigest()
 
 
-def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
-    """Index a single PDF. Returns IndexResult(chunks, status).
+def index_one_file(conn, repo_root: Path, file_path: Path) -> IndexResult:
+    """Index a single document. Returns IndexResult(chunks, status).
 
     Normalizes and claims `repo_root` itself rather than trusting the caller:
     this is a public entry point that writes keys, so the invariant "every
@@ -212,9 +219,9 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
     """
     repo_root = repo_root.resolve()
     _store.check_base_dir(conn, repo_root)
-    rel = rel_path(pdf_path, repo_root)
-    st = pdf_path.stat()
-    sha1 = _sha1_of_file(pdf_path)
+    rel = rel_path(file_path, repo_root)
+    st = file_path.stat()
+    sha1 = _sha1_of_file(file_path)
     existing = _store.get_file_meta(conn, rel)
     if existing is not None and existing[0] == sha1:
         return IndexResult(0, "skipped")
@@ -223,7 +230,10 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
     # so a run whose only PDFs are unreadable neither claims the store nor
     # leaves a file registered with no chunks behind it (which would then be
     # skipped as unchanged on every later run).
-    pages = _extractor.extract_pages(pdf_path)
+    extractor = _EXTRACTORS.get(file_path.suffix.lower())
+    if extractor is None:
+        raise ValueError(f"Unsupported format: {file_path.suffix}")
+    pages = extractor(file_path)
 
     rows: list[tuple] = []
     for page_num, page_text in enumerate(pages, start=1):
@@ -272,7 +282,7 @@ def index_one_file(conn, repo_root: Path, pdf_path: Path) -> IndexResult:
 
 def index_paths(conn, repo_root: Path, roots: list[Path], *,
                  prune: bool = True) -> IndexStats:
-    """Walk `roots` for *.pdf files (relative to `repo_root`) and index them."""
+    """Walk `roots` for supported documents and index them."""
     # Normalize here rather than trusting the caller: `rel_path` and the
     # prune containment check below both depend on this, so the invariant
     # belongs next to the code that relies on it.
@@ -296,13 +306,13 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
             continue
         scanned_roots.append(root)
         found_under[root] = 0
-        for pdf_path in _walk_pdfs(root, stats):
+        for file_path in _walk_docs(root, stats):
             stats.scanned += 1
             found_under[root] += 1
-            rel = rel_path(pdf_path, repo_root)
+            rel = rel_path(file_path, repo_root)
             seen.add(rel)
             try:
-                result = index_one_file(conn, repo_root, pdf_path)
+                result = index_one_file(conn, repo_root, file_path)
             except _store.BaseDirMismatch:
                 # A store-level invariant, not a problem with this file.
                 # Demoting it to a per-file error string would hide it.
@@ -326,8 +336,7 @@ def index_paths(conn, repo_root: Path, roots: list[Path], *,
         if len(stats.no_text_files) > 10:
             names.append(f"... and {len(stats.no_text_files) - 10} more")
         stats.warnings.append(
-            f"{stats.no_text} file(s) contained no extractable text "
-            f"(scanned/image-only PDF — OCR is not supported): "
+            f"{stats.no_text} file(s) contained no extractable text: "
             + ", ".join(names)
         )
 
