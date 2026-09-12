@@ -25,6 +25,7 @@ doc-query は [HVE](https://github.com/dahatake/HypervelocityEngineering)（MIT�
 | `docq/store.py` | mdq の `store.py` | **簡素化して移植**。FTS5 ミラー・embeddings・pageindex・tags を削除。`meta` テーブルは doc-query で追加 |
 | `docq/search.py` | mdq の `search.py` | **簡素化して移植**。embeddings 融合・pageindex ツリー・親/近傍/分割片の展開を削除。BM25 は自前実装に差し替え |
 | `docq/extractor_pdf.py` | — | 新規 |
+| `docq/extractor_office.py` | — | 新規 |
 | `docq/indexer.py` | — | 新規（チャンク化の既定値のみ mdq と同一） |
 | `docq/cli.py` | mdq の CLI 体系 | サブコマンド名を踏襲 |
 

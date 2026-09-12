@@ -5,6 +5,7 @@ doc_class: [D19, D08, D10]
 tags: [D19, D08, D10]
 sources:
   - docq/extractor_office.py
+  - docq/extractor_pdf.py
   - docq/indexer.py
   - docq/search.py
   - docq/store.py
