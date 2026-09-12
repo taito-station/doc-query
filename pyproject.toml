@@ -1,12 +1,14 @@
 [project]
 name = "doc-query"
 version = "0.1.0"
-description = "Local, index-and-search retrieval over office documents (PDF today; pptx/xlsx planned) that returns small relevant snippets instead of full text, to minimize LLM context/token consumption."
+description = "Local, index-and-search retrieval over office documents (PDF, pptx, xlsx) that returns small relevant snippets instead of full text, to minimize LLM context/token consumption."
 requires-python = ">=3.10"
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
+    "openpyxl>=3.1",
     "pdfplumber>=0.11",
+    "python-pptx>=1.0",
 ]
 
 [project.optional-dependencies]
