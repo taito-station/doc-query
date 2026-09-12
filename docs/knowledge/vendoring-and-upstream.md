@@ -8,7 +8,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
 distilled_from_sha: "3e83512"
-updated: "2026-08-24"
+updated: "2026-09-13"
 ---
 
 # vendor 元と責任境界

@@ -53,8 +53,8 @@ def _write_pptx(path: Path, slides: list[list[str]]) -> None:
     for lines in slides:
         slide = prs.slides.add_slide(blank_layout)
         if lines:
-            txBox = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(5))
-            tf = txBox.text_frame
+            tx_box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(5))
+            tf = tx_box.text_frame
             tf.text = lines[0]
             for line in lines[1:]:
                 p = tf.add_paragraph()

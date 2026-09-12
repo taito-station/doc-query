@@ -7,7 +7,7 @@ sources:
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/qa/QA-doc-flow-introduction.md
 distilled_from_sha: "a539394"
-updated: "2026-09-02"
+updated: "2026-09-13"
 ---
 
 # 目的・成功条件・対象境界
