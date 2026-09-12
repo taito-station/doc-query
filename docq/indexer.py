@@ -14,8 +14,8 @@ import os
 import stat
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Literal, NamedTuple
 
 from . import extractor_office as _extractor_office
@@ -227,7 +227,7 @@ def index_one_file(conn, repo_root: Path, file_path: Path) -> IndexResult:
         return IndexResult(0, "skipped")
 
     # Everything that can fail for this file happens before the first write,
-    # so a run whose only PDFs are unreadable neither claims the store nor
+    # so a run whose only files are unreadable neither claims the store nor
     # leaves a file registered with no chunks behind it (which would then be
     # skipped as unchanged on every later run).
     extractor = _EXTRACTORS.get(file_path.suffix.lower())

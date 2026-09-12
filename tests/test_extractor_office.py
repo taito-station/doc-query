@@ -29,6 +29,16 @@ def test_extract_pages_xlsx_blank_sheet_yields_empty_string(blank_xlsx):
     assert pages[0] == ""
 
 
+def test_extract_pages_pptx_extracts_table_cell_text(table_pptx):
+    pages = extractor_office.extract_pages(table_pptx)
+    assert len(pages) == 1
+    text = pages[0]
+    assert "名前" in text
+    assert "都市" in text
+    assert "太郎" in text
+    assert "東京" in text
+
+
 def test_extract_pages_pptx_raises_on_corrupt_file(tmp_path):
     bad = tmp_path / "corrupt.pptx"
     bad.write_bytes(b"this is not a pptx")

@@ -86,6 +86,24 @@ def sample_pptx(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def table_pptx(tmp_path: Path) -> Path:
+    """A pptx with one slide containing a 2x2 table."""
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    table = slide.shapes.add_table(2, 2, Inches(1), Inches(1), Inches(6), Inches(2)).table
+    table.cell(0, 0).text = "名前"
+    table.cell(0, 1).text = "都市"
+    table.cell(1, 0).text = "太郎"
+    table.cell(1, 1).text = "東京"
+    path = tmp_path / "table.pptx"
+    prs.save(str(path))
+    return path
+
+
+@pytest.fixture
 def blank_pptx(tmp_path: Path) -> Path:
     """A pptx with a single blank slide (no text shapes)."""
     path = tmp_path / "blank.pptx"

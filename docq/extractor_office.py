@@ -37,6 +37,12 @@ def _extract_pptx(path: Path) -> list[str]:
                     text = para.text.strip()
                     if text:
                         texts.append(text)
+            if shape.has_table:
+                for row in shape.table.rows:
+                    for cell in row.cells:
+                        text = cell.text.strip()
+                        if text:
+                            texts.append(text)
         pages.append("\n".join(texts))
     return pages
 

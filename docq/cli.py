@@ -94,9 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Path to the SQLite index (default: .docq/index.sqlite)")
     sub = p.add_subparsers(dest="command", required=True)
 
-    p_index = sub.add_parser("index", help="Scan PDFs under --root and (re)index them")
+    p_index = sub.add_parser("index", help="Scan documents under --root and (re)index them")
     p_index.add_argument("--root", action="append",
-                          help="Directory to scan for *.pdf (repeatable; default: .)")
+                          help="Directory to scan for documents (repeatable; default: .)")
     p_index.add_argument("--no-prune", action="store_true",
                           help="Do not remove index entries for files that are gone "
                                "from the scanned roots (entries indexed from other "
