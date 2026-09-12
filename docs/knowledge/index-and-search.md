@@ -11,7 +11,7 @@ sources:
   - docq/tokenize.py
   - docs/original-docs/1-doc-flow-introduction.md
   - docs/original-docs/2-fullwidth-scoring-defect.md
-distilled_from_sha: "b3fa7de"
+distilled_from_sha: "8a31df4"
 updated: "2026-09-03"
 ---
 
