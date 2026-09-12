@@ -2,6 +2,9 @@
 
 Each slide (pptx) or sheet (xlsx) maps to one "page" of text, following the
 same interface as extractor_pdf.
+
+Limitations: grouped shapes (SmartArt, nested groups) are not traversed;
+only top-level shapes on each slide are inspected.
 """
 from __future__ import annotations
 

@@ -546,6 +546,16 @@ def test_index_paths_matches_uppercase_pptx_suffix(tmp_path, sample_pptx):
     assert stats.indexed == 1
 
 
+def test_index_paths_matches_uppercase_xlsx_suffix(tmp_path, sample_xlsx):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "DATA.XLSX").write_bytes(sample_xlsx.read_bytes())
+
+    conn = store.open_store(tmp_path / "index.sqlite")
+    stats = indexer.index_paths(conn, tmp_path, [docs])
+    assert stats.indexed == 1
+
+
 def test_index_one_file_rejects_unsupported_format(tmp_path):
     txt = tmp_path / "notes.txt"
     txt.write_text("hello")

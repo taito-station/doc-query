@@ -12,9 +12,9 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, NamedTuple
 
