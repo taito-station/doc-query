@@ -63,8 +63,8 @@ mdq.tokenize.scoring_terms('指定席Ａ') -> ['指定', '定席']   # doc-query
 **評価集がカバーしない領域には欠陥が残り続ける**ことの実例になっており、
 [search-quality-evaluation.md](search-quality-evaluation.md) を導入する根拠のひとつでもある。
 
-**上流へ還元済み。** [dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)
-で NFKC 正規化の PR を提出した（決定ログ #25-1）。
+**上流へ PR を提出済み。** [dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)
+で NFKC 正規化の PR を提出した（決定ログ #25-3）。
 
 ---
 
@@ -147,7 +147,7 @@ MIT で公開する前提なので、依存のライセンスが配布可能性�
   いるので、「もっと良い抽出器がある」だけでは覆らない
 - 大きい PDF でのメモリ挙動（`pdfplumber` はページごとの解析結果をキャッシュする）は未計測
 
-### #25-1: 全角英数スコアリング修正を上流に還元する (2026-09-13) — 採用
+### #25-3: 全角英数スコアリング修正を上流に還元する (2026-09-13) — 採用
 
 #### コンテキスト
 
