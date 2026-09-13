@@ -63,8 +63,9 @@ mdq.tokenize.scoring_terms('指定席Ａ') -> ['指定', '定席']   # doc-query
 **評価集がカバーしない領域には欠陥が残り続ける**ことの実例になっており、
 [search-quality-evaluation.md](search-quality-evaluation.md) を導入する根拠のひとつでもある。
 
-**上流へ PR を提出済み。** [dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)
-で NFKC 正規化の PR を提出した（決定ログ #25-3）。
+**上流へ PR を提出済み。** [#2](https://github.com/taito-station/doc-query/issues/2) で修正した
+NFKC 正規化について、[dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)
+で上流 PR を提出した（決定ログ #25-3）。
 
 ---
 
