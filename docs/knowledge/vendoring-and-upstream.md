@@ -63,8 +63,8 @@ mdq.tokenize.scoring_terms('指定席Ａ') -> ['指定', '定席']   # doc-query
 **評価集がカバーしない領域には欠陥が残り続ける**ことの実例になっており、
 [search-quality-evaluation.md](search-quality-evaluation.md) を導入する根拠のひとつでもある。
 
-**還元するかどうかは未決。** doc-query 側の修正が固まってから判断する
-（[#2](https://github.com/taito-station/doc-query/issues/2)）。
+**上流へ還元済み。** [dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)
+で NFKC 正規化の PR を提出した（決定ログ #25-1）。
 
 ---
 
@@ -146,5 +146,34 @@ MIT で公開する前提なので、依存のライセンスが配布可能性�
 - **抽出器を差し替えるときはライセンスを先に確認する。** この判断は品質ではなくライセンスで決まって
   いるので、「もっと良い抽出器がある」だけでは覆らない
 - 大きい PDF でのメモリ挙動（`pdfplumber` はページごとの解析結果をキャッシュする）は未計測
+
+### #25-1: 全角英数スコアリング修正を上流に還元する (2026-09-13) — 採用
+
+#### コンテキスト
+
+[#2](https://github.com/taito-station/doc-query/issues/2) で修正した NFKC 正規化は、vendor 元
+`mdq` から継承した欠陥への対処だった。doc-query 側は PR #14 で修正済み・安定運用中で、還元の
+タイミングが来た。
+
+#### 決定
+
+**上流 `dahatake/HypervelocityEngineering` に NFKC 正規化の PR を提出する。**
+[dahatake/HypervelocityEngineering#4](https://github.com/dahatake/HypervelocityEngineering/pull/4)。
+
+#### 理由
+
+- doc-query 側で 2 週間以上の運用実績があり、ゴールデン評価でも回帰なし
+- 修正は `scoring_terms` と `search.tokenize` への 1 行追加ずつで、上流への影響が限定的
+- 上流のゴールデンクエリに全角英数が含まれないため、上流側では自然に発見されない欠陥
+
+#### 却下した代替案
+
+- **還元しない。** vendor であって追従義務はないが、同じ欠陥を知りながら放置するのは
+  OSS 利用者としての責任に反する。修正コストも極小
+
+#### 影響
+
+- 上流でマージされれば、将来 vendor を再取り込みする際に差分が減る
+- マージされなくても doc-query 側には影響なし（独立した vendor）
 
 <!-- decision-log:end -->
